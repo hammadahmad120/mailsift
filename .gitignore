@@ -162,4 +162,5 @@ CLAUDE.md
 # Editor and OS
 .vscode/
 .idea/
+/docs
 .DS_Store
