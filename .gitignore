@@ -147,3 +147,19 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+
+# AI assistant files (local only)
+.claude/
+CLAUDE.md
+.cursor/
+.cursorrules
+.cursorignore
+.aider*
+.copilot/
+*.local.md
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
