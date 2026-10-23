@@ -27,7 +27,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "check": "npm run lint && npm run typecheck && npm test",
+    "dev:env": "node --env-file=.env --import tsx src/index.ts"
   },
   "keywords": [
     "mcp",
