@@ -149,9 +149,7 @@ vite.config.ts.timestamp-*
 .turbo
 
 
-# AI assistant files (local only)
-.claude/
-CLAUDE.md
+# AI assistant files (Cursor, Aider, Copilot). Claude context (.claude/, CLAUDE.md, docs/) is tracked for now; remove before publishing.
 .cursor/
 .cursorrules
 .cursorignore
@@ -162,5 +160,4 @@ CLAUDE.md
 # Editor and OS
 .vscode/
 .idea/
-/docs
 .DS_Store
