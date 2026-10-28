@@ -8,13 +8,23 @@ import { MailError } from '../../errors.js';
  *   - The path must match the allow-list below. Anything else throws before
  *     a request is made.
  *
- * Phase 1 allows `profile` only. Task 2.3 extends the list and adds retries.
+ * Retries (brief section 8.4): 429 and 5xx are retried with backoff, at most
+ * `maxAttempts` tries, honouring `Retry-After`. Every caller gets this for free.
  */
 
 export const GMAIL_BASE_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/';
 
-/** Exact paths (relative to GMAIL_BASE_URL) this client may fetch. */
-export const ALLOWED_PATHS: readonly RegExp[] = [/^profile$/];
+/** A Gmail message, thread or attachment id: URL-safe characters only. */
+const ID = '[A-Za-z0-9_=-]+';
+
+/** Exact paths (relative to GMAIL_BASE_URL) this client may fetch. All reads. */
+export const ALLOWED_PATHS: readonly RegExp[] = [
+  /^profile$/,
+  /^messages$/,
+  new RegExp(`^messages/${ID}$`),
+  new RegExp(`^threads/${ID}$`),
+  new RegExp(`^messages/${ID}/attachments/${ID}$`),
+];
 
 export type QueryParams = Record<string, string | number | undefined>;
 
@@ -27,14 +37,56 @@ export interface GmailClientOptions {
   token: string;
   timeoutMs: number;
   fetch?: typeof fetch;
+  /** Total tries per request, including the first. Default 3. */
+  maxAttempts?: number;
+  /** First backoff wait; doubles each retry. Default 500 ms. */
+  baseDelayMs?: number;
+  /** Injected for tests. Defaults to a real timer. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
+/** Longest wait between two tries, even if Retry-After asks for more. */
+const MAX_DELAY_MS = 30_000;
+
+/**
+ * Gmail's write verbs sit where an id would be (`messages/send`, `messages/batchDelete`).
+ * They only answer to POST, which this client cannot send, but they are refused by
+ * name as well so the allow-list reads as what it is: ids only.
+ */
+export const RESERVED_SEGMENTS: ReadonlySet<string> = new Set([
+  'send',
+  'import',
+  'insert',
+  'batchDelete',
+  'batchModify',
+  'modify',
+  'trash',
+  'untrash',
+  'delete',
+  'attachments',
+]);
+
 export function isAllowedPath(path: string): boolean {
-  return ALLOWED_PATHS.some((pattern) => pattern.test(path));
+  if (!ALLOWED_PATHS.some((pattern) => pattern.test(path))) return false;
+  return path
+    .split('/')
+    .slice(1)
+    .every((segment, i, segs) => {
+      // `attachments` is a literal in the attachment path, allowed only at its own position.
+      if (segment === 'attachments' && i === 1 && segs.length === 3) return true;
+      return !RESERVED_SEGMENTS.has(segment);
+    });
+}
+
+export function isRetryableStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
 }
 
 export function createGmailClient(options: GmailClientOptions): GmailClient {
   const fetchImpl = options.fetch ?? fetch;
+  const sleep = options.sleep ?? defaultSleep;
+  const maxAttempts = Math.max(1, options.maxAttempts ?? 3);
+  const baseDelayMs = options.baseDelayMs ?? 500;
   const { token, timeoutMs } = options;
 
   return {
@@ -46,29 +98,61 @@ export function createGmailClient(options: GmailClientOptions): GmailClient {
         if (value !== undefined) url.searchParams.set(key, String(value));
       }
 
-      let response: Response;
-      try {
-        response = await fetchImpl(url, {
-          method: 'GET',
-          headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-      } catch (err) {
-        if (err instanceof Error && err.name === 'TimeoutError') {
-          throw new MailError(
-            'PROVIDER_ERROR',
-            `Gmail did not respond within ${timeoutMs} ms.`,
-            'Retry, or narrow the request.',
-          );
+      for (let attempt = 1; ; attempt++) {
+        const response = await fetchOnce(url);
+
+        if (response.ok) return (await response.json()) as T;
+
+        const retriesLeft = attempt < maxAttempts;
+        if (!retriesLeft || !isRetryableStatus(response.status)) {
+          throw mapHttpError(response.status, path, attempt);
         }
-        throw new MailError('PROVIDER_ERROR', 'Could not reach the Gmail API.');
+
+        await sleep(retryDelay(response, attempt, baseDelayMs));
       }
-
-      if (!response.ok) throw mapHttpError(response.status, path);
-
-      return (await response.json()) as T;
     },
   };
+
+  async function fetchOnce(url: URL): Promise<Response> {
+    try {
+      return await fetchImpl(url, {
+        method: 'GET',
+        headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') {
+        throw new MailError(
+          'PROVIDER_ERROR',
+          `Gmail did not respond within ${timeoutMs} ms.`,
+          'Retry, or narrow the request.',
+        );
+      }
+      throw new MailError('PROVIDER_ERROR', 'Could not reach the Gmail API.');
+    }
+  }
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Retry-After (seconds or HTTP date) wins; otherwise exponential backoff. Capped. */
+export function retryDelay(response: Response, attempt: number, baseDelayMs: number): number {
+  const header = response.headers.get('retry-after');
+  let delay = baseDelayMs * 2 ** (attempt - 1);
+
+  if (header !== null) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      delay = seconds * 1000;
+    } else {
+      const at = Date.parse(header);
+      if (!Number.isNaN(at)) delay = Math.max(0, at - Date.now());
+    }
+  }
+
+  return Math.min(delay, MAX_DELAY_MS);
 }
 
 function assertSafePath(path: string): void {
@@ -83,7 +167,8 @@ function assertSafePath(path: string): void {
   }
 }
 
-function mapHttpError(status: number, path: string): MailError {
+function mapHttpError(status: number, path: string, attempts: number): MailError {
+  const tried = attempts > 1 ? ` after ${attempts} tries` : '';
   switch (status) {
     case 401:
       return new MailError('AUTH_TOKEN_INVALID', 'Google rejected the mailbox token.');
@@ -96,8 +181,8 @@ function mapHttpError(status: number, path: string): MailError {
     case 404:
       return new MailError('NOT_FOUND', `Gmail resource not found: ${path}.`);
     case 429:
-      return new MailError('RATE_LIMITED', 'Gmail rate limit hit.');
+      return new MailError('RATE_LIMITED', `Gmail rate limit hit${tried}.`);
     default:
-      return new MailError('PROVIDER_ERROR', `Gmail API returned HTTP ${status}.`);
+      return new MailError('PROVIDER_ERROR', `Gmail API returned HTTP ${status}${tried}.`);
   }
 }

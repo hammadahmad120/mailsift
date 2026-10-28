@@ -1,23 +1,67 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createGmailClient, isAllowedPath } from '../src/providers/gmail/client.js';
+import {
+  createGmailClient,
+  isAllowedPath,
+  isRetryableStatus,
+  retryDelay,
+} from '../src/providers/gmail/client.js';
 import type { MailError } from '../src/errors.js';
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-const makeClient = (fetchMock: typeof fetch) =>
-  createGmailClient({ token: 'ya29.test-token', timeoutMs: 5000, fetch: fetchMock });
+/** Records every requested sleep and resolves at once, so retries run instantly. */
+const makeClient = (fetchMock: typeof fetch, sleeps: number[] = []) =>
+  createGmailClient({
+    token: 'ya29.test-token',
+    timeoutMs: 5000,
+    fetch: fetchMock,
+    sleep: (ms) => {
+      sleeps.push(ms);
+      return Promise.resolve();
+    },
+  });
 
 const codeOf = async (p: Promise<unknown>) =>
   ((await p.catch((e: unknown) => e)) as MailError).code;
 
 describe('allow-list', () => {
-  it('allows profile only in phase 1', () => {
-    expect(isAllowedPath('profile')).toBe(true);
-    expect(isAllowedPath('messages')).toBe(false);
-    expect(isAllowedPath('messages/abc/modify')).toBe(false);
-    expect(isAllowedPath('drafts')).toBe(false);
-    expect(isAllowedPath('profile/extra')).toBe(false);
+  it('allows exactly the five read endpoints', () => {
+    for (const ok of [
+      'profile',
+      'messages',
+      'messages/18f3a9c0ffee',
+      'threads/18f3a9c0ffee',
+      'messages/18f3a9c0ffee/attachments/ANGjdJ8w-_x=',
+    ]) {
+      expect(isAllowedPath(ok), ok).toBe(true);
+    }
+  });
+
+  it('refuses every write or unknown path', () => {
+    for (const bad of [
+      'messages/abc/modify',
+      'messages/abc/trash',
+      'messages/abc/untrash',
+      'messages/send',
+      'messages/import',
+      'messages/batchDelete',
+      'messages/batchModify',
+      'messages/insert',
+      'messages/18f3a9c0ffee/attachments/send',
+      'messages/send/attachments/abc',
+      'threads/abc/modify',
+      'drafts',
+      'labels',
+      'settings/filters',
+      'profile/extra',
+      'messages/',
+      'messages/abc/',
+      'messages/abc/attachments',
+      'messages/a b/attachments/c',
+    ]) {
+      expect(isAllowedPath(bad), bad).toBe(false);
+    }
   });
 });
 
@@ -83,8 +127,20 @@ describe('createGmailClient', () => {
     [500, 'PROVIDER_ERROR'],
     [503, 'PROVIDER_ERROR'],
   ])('maps HTTP %i to %s', async (status, code) => {
-    const fetchMock = vi.fn().mockResolvedValue(json({ error: 'x' }, status));
+    const fetchMock = vi.fn().mockImplementation(() => json({ error: 'x' }, status));
     expect(await codeOf(makeClient(fetchMock).get('profile'))).toBe(code);
+  });
+
+  it('does not retry 401, 403 or 404', async () => {
+    for (const status of [401, 403, 404]) {
+      const fetchMock = vi.fn().mockImplementation(() => json({ error: 'x' }, status));
+      const sleeps: number[] = [];
+      await makeClient(fetchMock, sleeps)
+        .get('profile')
+        .catch(() => undefined);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(sleeps).toEqual([]);
+    }
   });
 
   it('maps a timeout to PROVIDER_ERROR with a clear message', async () => {
@@ -103,5 +159,96 @@ describe('createGmailClient', () => {
       .catch((e: unknown) => e)) as MailError;
     expect(err.code).toBe('PROVIDER_ERROR');
     expect(err.message).not.toContain('ya29');
+  });
+
+  it('retries a 503 and succeeds on the second try', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => json({ error: 'down' }, 503))
+      .mockImplementationOnce(() => json({ emailAddress: 'me@example.com' }));
+    const sleeps: number[] = [];
+
+    const result = await makeClient(fetchMock, sleeps).get<{ emailAddress: string }>('profile');
+
+    expect(result.emailAddress).toBe('me@example.com');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sleeps).toEqual([500]);
+  });
+
+  it('ends as RATE_LIMITED after three 429s with doubling backoff', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => json({ error: 'slow down' }, 429));
+    const sleeps: number[] = [];
+
+    const err = (await makeClient(fetchMock, sleeps)
+      .get('messages')
+      .catch((e: unknown) => e)) as MailError;
+
+    expect(err.code).toBe('RATE_LIMITED');
+    expect(err.message).toContain('3 tries');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(sleeps).toEqual([500, 1000]);
+  });
+
+  it('ends as PROVIDER_ERROR after three 5xx responses', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => json({ error: 'x' }, 502));
+    expect(await codeOf(makeClient(fetchMock).get('profile'))).toBe('PROVIDER_ERROR');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('honours Retry-After in seconds over the backoff', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Response('{}', { status: 429, headers: { 'retry-after': '2' } }),
+      )
+      .mockImplementationOnce(() => json({}));
+    const sleeps: number[] = [];
+
+    await makeClient(fetchMock, sleeps).get('profile');
+    expect(sleeps).toEqual([2000]);
+  });
+
+  it('respects maxAttempts', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => json({}, 500));
+    const client = createGmailClient({
+      token: 't',
+      timeoutMs: 1000,
+      fetch: fetchMock,
+      maxAttempts: 1,
+      sleep: () => Promise.resolve(),
+    });
+    await client.get('profile').catch(() => undefined);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('retry helpers', () => {
+  it('isRetryableStatus covers 429 and every 5xx only', () => {
+    expect(isRetryableStatus(429)).toBe(true);
+    expect(isRetryableStatus(500)).toBe(true);
+    expect(isRetryableStatus(599)).toBe(true);
+    for (const s of [200, 400, 401, 403, 404, 408]) expect(isRetryableStatus(s)).toBe(false);
+  });
+
+  it('retryDelay doubles per attempt, uses Retry-After when present, and is capped', () => {
+    const plain = new Response('', { status: 503 });
+    expect(retryDelay(plain, 1, 500)).toBe(500);
+    expect(retryDelay(plain, 2, 500)).toBe(1000);
+    expect(retryDelay(plain, 3, 500)).toBe(2000);
+
+    const seconds = new Response('', { status: 429, headers: { 'retry-after': '7' } });
+    expect(retryDelay(seconds, 1, 500)).toBe(7000);
+
+    const huge = new Response('', { status: 429, headers: { 'retry-after': '600' } });
+    expect(retryDelay(huge, 1, 500)).toBe(30_000);
+
+    const soon = new Date(Date.now() + 5000).toUTCString();
+    const dated = new Response('', { status: 429, headers: { 'retry-after': soon } });
+    const d = retryDelay(dated, 1, 500);
+    expect(d).toBeGreaterThan(3000);
+    expect(d).toBeLessThanOrEqual(5000);
+
+    const junk = new Response('', { status: 429, headers: { 'retry-after': 'soon' } });
+    expect(retryDelay(junk, 2, 500)).toBe(1000);
   });
 });

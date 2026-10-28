@@ -87,7 +87,7 @@ Goal: find messages by filters and read one message's body. No cleaning yet, no 
   - Files: `src/providers/gmail/query-builder.ts`, `test/query-builder.test.ts`.
   - Verify: one test per field, plus escaping of quotes and spaces, plus both error cases. The test file doubles as the spec for the `mail://search-syntax` resource later.
 
-- [ ] **2.2 Scope check**
+- [x] **2.2 Scope check** (verified 2026-10-28)
   - Build: `assertReadOnlyScope(token)` calling Google's tokeninfo endpoint, parsing `scope`, rejecting with `AUTH_SCOPE_TOO_BROAD` if any scope is outside the allow-list, and `AUTH_TOKEN_INVALID` if Google says the token is bad. Verdicts cached for `SCOPE_CACHE_TTL_MS` keyed by SHA-256 of the token.
   - Why: read-only enforcement layer 3. Even a caller that sends a full-access token is turned away before any Gmail call.
   - Files: `src/auth/scope-check.ts`, `test/scope-check.test.ts`.
