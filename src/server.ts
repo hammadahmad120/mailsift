@@ -7,6 +7,7 @@ import { createGmailClient } from './providers/gmail/client.js';
 import { GmailProvider } from './providers/gmail/provider.js';
 import type { MailProvider } from './providers/types.js';
 import { registerGetMailboxProfile } from './tools/get-mailbox-profile.js';
+import { registerSearchMail } from './tools/search-mail.js';
 
 /** Must match package.json. Bumped on release (task 6.5). */
 export const SERVER_INFO = { name: 'mailsift', version: '0.1.0' } as const;
@@ -44,11 +45,13 @@ export function createDefaultDeps(env: NodeJS.ProcessEnv = process.env): ServerD
 export function createServer(deps: ServerDeps): McpServer {
   const server = new McpServer(SERVER_INFO, {
     instructions:
-      'Read-only mailbox access. Use get_mailbox_profile to confirm the connection. ' +
+      'Read-only mailbox access. Use get_mailbox_profile to confirm the connection, ' +
+      'then search_mail to find messages by subject, sender, dates, keywords or attachments. ' +
       'No tool can send, modify, label, or delete mail.',
   });
 
   registerGetMailboxProfile(server, deps);
+  registerSearchMail(server, deps);
 
   return server;
 }

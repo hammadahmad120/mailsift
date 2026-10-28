@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CredentialResolver } from '../src/auth/credentials.js';
 import { MailError } from '../src/errors.js';
 import { loadConfig } from '../src/config.js';
-import type { MailProvider, MailboxProfile } from '../src/providers/types.js';
+import type { MailProvider, MailboxProfile, SearchResult } from '../src/providers/types.js';
 import { createDefaultDeps, createServer, type ServerDeps } from '../src/server.js';
 
 const FAKE_TOKEN = 'ya29.test-token-must-never-leak';
@@ -71,22 +71,50 @@ afterEach(async () => {
 });
 
 describe('createServer', () => {
-  it('lists exactly one tool with read-only annotations and an empty input schema', async () => {
+  it('lists the tools, all read-only, and never leaks the token', async () => {
     const client = await connect(fakeDeps());
 
     const { tools } = await client.listTools();
 
-    expect(tools).toHaveLength(1);
-    const tool = tools[0]!;
-    expect(tool.name).toBe('get_mailbox_profile');
-    expect(tool.annotations).toMatchObject({
-      readOnlyHint: true,
-      destructiveHint: false,
-      openWorldHint: true,
-    });
-    expect(tool.inputSchema).toMatchObject({ type: 'object' });
-    expect(Object.keys(tool.inputSchema.properties ?? {})).toEqual([]);
+    expect(tools.map((t) => t.name).sort()).toEqual(['get_mailbox_profile', 'search_mail']);
+    for (const tool of tools) {
+      expect(tool.annotations).toMatchObject({
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+      });
+      expect(tool.inputSchema).toMatchObject({ type: 'object' });
+    }
+    const profileTool = tools.find((t) => t.name === 'get_mailbox_profile')!;
+    expect(Object.keys(profileTool.inputSchema.properties ?? {})).toEqual([]);
     expect(JSON.stringify(tools)).not.toContain(FAKE_TOKEN);
+  });
+
+  it('describes every search_mail field from the brief', async () => {
+    const client = await connect(fakeDeps());
+    const { tools } = await client.listTools();
+    const search = tools.find((t) => t.name === 'search_mail')!;
+    const props = search.inputSchema.properties ?? {};
+    expect(Object.keys(props).sort()).toEqual([
+      'after',
+      'any_keywords',
+      'attachment_types',
+      'before',
+      'from',
+      'has_attachment',
+      'keywords',
+      'label',
+      'page_size',
+      'page_token',
+      'raw_query',
+      'subject',
+      'to',
+    ]);
+    expect(search.inputSchema.required ?? []).toEqual([]);
+    for (const [name, prop] of Object.entries(props)) {
+      expect((prop as { description?: string }).description, name).toBeTruthy();
+    }
+    expect(search.description).toContain('never message bodies');
   });
 });
 
@@ -174,6 +202,104 @@ describe('get_mailbox_profile', () => {
     expect(body.code).toBe('PROVIDER_ERROR');
     expect(body.message).not.toContain('boom');
     expect(JSON.stringify(result)).not.toContain(FAKE_TOKEN);
+  });
+});
+
+const searchResult: SearchResult = {
+  query_used: 'subject:(Node) after:2026/09/01 -in:spam -in:trash',
+  result_size_estimate: 43,
+  next_page_token: 'tok-2',
+  items: [
+    {
+      message_id: '18f3a9c0ffee0001',
+      thread_id: '18f3a9c0ffee0001',
+      date: '2026-10-14T05:30:00.000Z',
+      from: 'Alice Example <alice@example.com>',
+      to: ['me@example.com'],
+      subject: 'Plain text message',
+      snippet: 'Hello, Here is the plain text body.',
+      attachments: [],
+      link: 'https://mail.google.com/mail/u/0/#all/18f3a9c0ffee0001',
+    },
+  ],
+};
+
+describe('search_mail', () => {
+  it('passes filters and paging to the provider and returns the result plus a summary', async () => {
+    const search = vi.fn<MailProvider['search']>(() => Promise.resolve(searchResult));
+    const client = await connect(fakeDeps({ createProvider: () => fakeProvider({ search }) }));
+
+    const result = await client.callTool({
+      name: 'search_mail',
+      arguments: { subject: 'Node', after: '2026-09-01', attachment_types: ['pdf'], page_size: 10 },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(search).toHaveBeenCalledWith(
+      { subject: 'Node', after: '2026-09-01', attachment_types: ['pdf'] },
+      { page_size: 10 },
+    );
+    const body = JSON.parse(textOf(result, 0)) as SearchResult;
+    expect(body).toEqual(searchResult);
+    expect(body.query_used).toBe(searchResult.query_used);
+    expect(body.items[0]?.link).toBe('https://mail.google.com/mail/u/0/#all/18f3a9c0ffee0001');
+    expect(body.next_page_token).toBe('tok-2');
+    expect(textOf(result, 1)).toContain('43');
+    expect(textOf(result, 1)).toContain('showing 1');
+    expect(textOf(result, 1)).toContain('More pages');
+  });
+
+  it('defaults page_size to 25, clamps it to MAX_PAGE_SIZE, and passes page_token through', async () => {
+    const search = vi.fn<MailProvider['search']>(() => Promise.resolve(searchResult));
+    const client = await connect(
+      fakeDeps({
+        config: loadConfig({ MAX_PAGE_SIZE: '50' }),
+        createProvider: () => fakeProvider({ search }),
+      }),
+    );
+
+    await client.callTool({ name: 'search_mail', arguments: { from: 'a@b.c' } });
+    await client.callTool({
+      name: 'search_mail',
+      arguments: { from: 'a@b.c', page_size: 500, page_token: 'tok-2' },
+    });
+
+    expect(search.mock.calls[0]?.[1]).toEqual({ page_size: 25 });
+    expect(search.mock.calls[1]?.[1]).toEqual({ page_size: 50, page_token: 'tok-2' });
+  });
+
+  it('returns QUERY_EMPTY as a structured error, not a crash', async () => {
+    const client = await connect(
+      fakeDeps({
+        createProvider: () =>
+          fakeProvider({
+            search: () =>
+              Promise.reject(new MailError('QUERY_EMPTY', 'No search filter was given.')),
+          }),
+      }),
+    );
+
+    const result = await client.callTool({ name: 'search_mail', arguments: {} });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({
+      code: 'QUERY_EMPTY',
+      hint: expect.stringContaining('at least one') as string,
+    });
+  });
+
+  it('rejects a malformed date at the schema before touching credentials', async () => {
+    const resolveCredentials = vi.fn<CredentialResolver>();
+    const client = await connect(fakeDeps({ resolveCredentials }));
+
+    const result = await client.callTool({
+      name: 'search_mail',
+      arguments: { after: '2026/09/01' },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result, 0)).toMatch(/YYYY-MM-DD/);
+    expect(resolveCredentials).not.toHaveBeenCalled();
   });
 });
 

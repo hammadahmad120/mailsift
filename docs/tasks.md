@@ -111,7 +111,7 @@ Goal: find messages by filters and read one message's body. No cleaning yet, no 
   - Files: `src/providers/gmail/provider.ts`, `test/fixtures/gmail/list.json`, `thread.json`, `test/gmail-provider.test.ts`.
   - Verify: tests against recorded JSON check the `SearchResult` items have `link` in the Gmail URL format and `getThread` returns messages sorted by date.
 
-- [ ] **2.6 `search_mail` tool**
+- [x] **2.6 `search_mail` tool** (verified 2026-10-28, Inspector search done)
   - Build: tool with the zod input from brief section 8.1, page size capped at `MAX_PAGE_SIZE`, output exactly as the brief shows.
   - Why: the model's first real tool. Metadata only, never bodies, so replies stay small.
   - Files: `src/tools/search-mail.ts`, `test/server.test.ts`.

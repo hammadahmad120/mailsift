@@ -2,7 +2,7 @@
 
 Your mailbox, as documents your AI can actually read. Read-only MCP server that searches mail and returns clean text with attachments extracted.
 
-> Status: early. One tool (`get_mailbox_profile`) over stdio. Search, documents, and HTTP are in progress. See [docs/status.md](docs/status.md) for the phase tracker and [docs/design-brief.md](docs/design-brief.md) for the full design.
+> Status: early. Two tools (`get_mailbox_profile`, `search_mail`) over stdio. Reading documents, attachments, and HTTP are in progress. See [docs/status.md](docs/status.md) for the phase tracker and [docs/design-brief.md](docs/design-brief.md) for the full design.
 
 ## Development
 
@@ -25,6 +25,49 @@ npx @modelcontextprotocol/inspector -e MAIL_TOKEN=<token> npx tsx src/index.ts
 ```
 
 How to get a token and how to add the server to Claude Code: [examples/claude-code.md](examples/claude-code.md). The `--http` transport is not built yet.
+
+## Tools
+
+| Tool                  | What it does                                                                                                                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `get_mailbox_profile` | Connection test. Email address, message and thread counts, granted scopes, `read_only: true`.                                                                                                                                        |
+| `search_mail`         | Find messages by `subject`, `from`, `to`, `keywords`, `any_keywords`, `after`, `before`, `has_attachment`, `attachment_types`, `label`, `raw_query`. Metadata and links only, never bodies. Paged with `page_size` and `page_token`. |
+
+Example `search_mail` call and reply:
+
+```json
+{ "subject": "Node developer", "after": "2026-09-01", "attachment_types": ["pdf"] }
+```
+
+```json
+{
+  "query_used": "subject:(Node developer) after:2026/09/01 filename:pdf -in:spam -in:trash",
+  "result_size_estimate": 43,
+  "next_page_token": "…",
+  "items": [
+    {
+      "message_id": "18f…",
+      "thread_id": "18f…",
+      "date": "2026-09-14T08:12:00.000Z",
+      "from": "Jane Doe <jane@example.com>",
+      "to": ["hiring@example.com"],
+      "subject": "Application for Senior Node Developer",
+      "snippet": "Please find my CV attached…",
+      "attachments": [
+        {
+          "attachment_id": "…",
+          "filename": "jane-cv.pdf",
+          "mime": "application/pdf",
+          "size": 183221
+        }
+      ],
+      "link": "https://mail.google.com/mail/u/0/#all/18f…"
+    }
+  ]
+}
+```
+
+Every filter is optional but at least one of subject, from, to, keywords, dates, label or raw_query must be set. Date ranges wider than `MAX_RANGE_DAYS` (default 365) are rejected. Spam and trash are always excluded.
 
 ## Licence
 
