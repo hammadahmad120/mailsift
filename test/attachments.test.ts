@@ -27,6 +27,18 @@ describe('parseAttachment: supported types', () => {
     expect(result.text.indexOf('Quarterly')).toBeLessThan(result.text.indexOf('Page two'));
   });
 
+  it('leaves the input bytes intact so they can be parsed again', async () => {
+    const bytes = fixture('sample.pdf');
+    const before = bytes.byteLength;
+    await parseAttachment({ mime: 'application/pdf', filename: 'a.pdf', bytes }, opts);
+    expect(bytes.byteLength).toBe(before);
+    const again = await parseAttachment(
+      { mime: 'application/pdf', filename: 'a.pdf', bytes },
+      opts,
+    );
+    expect(again.pages).toBe(2);
+  });
+
   it('extracts known sentences from a DOCX', async () => {
     const result = await parseAttachment(
       { mime: DOCX, filename: 'offer.docx', bytes: fixture('sample.docx') },

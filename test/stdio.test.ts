@@ -65,6 +65,7 @@ describe('main --stdio', () => {
     const list = await h.request(2, 'tools/list');
     const tools = list.result?.['tools'] as Array<{ name: string }>;
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'get_attachment_text',
       'get_email',
       'get_mailbox_profile',
       'search_mail',

@@ -22,7 +22,7 @@ From the repo root:
 npx @modelcontextprotocol/inspector -e MAIL_TOKEN=<access token> npx tsx src/index.ts
 ```
 
-Open the URL it prints. Click **Connect**, then **Tools**, then **List Tools**. You should see `get_mailbox_profile` and `search_mail`. Run the first and you get your email address and message count. Then run `search_mail` with a subject word from your own inbox and you get matching messages with links. Paste one `message_id` into `get_email` to read its body.
+Open the URL it prints. Click **Connect**, then **Tools**, then **List Tools**. You should see `get_mailbox_profile` and `search_mail`. Run the first and you get your email address and message count. Then run `search_mail` with a subject word from your own inbox and you get matching messages with links. Paste one `message_id` into `get_email` to read its body. If it lists an attachment, pass the same `message_id` and the `filename` to `get_attachment_text` to read the file's text.
 
 After `npm run build` the same works with the compiled file:
 

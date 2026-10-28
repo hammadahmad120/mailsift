@@ -141,21 +141,13 @@ export class GmailProvider implements MailProvider {
   }
 
   /**
-   * Two calls: the message, to learn the attachment's filename, mime and size
-   * (Gmail's attachment reply carries only bytes), then the bytes themselves.
-   * An id that is not on that message is NOT_FOUND before the second call.
+   * One call for the bytes. Gmail issues a new attachment id on every message
+   * read, so the id must come from the message the caller just fetched; a
+   * stale one is a Gmail 404, mapped to NOT_FOUND by the client.
    */
   async getAttachment(messageId: string, attachmentId: string): Promise<RawAttachment> {
+    assertId('message', messageId);
     assertId('attachment', attachmentId);
-    const message = await fetchMessage(this.client, messageId);
-    const meta = listAttachments(message.payload).find((a) => a.attachment_id === attachmentId);
-    if (!meta) {
-      throw new MailError(
-        'NOT_FOUND',
-        `Attachment ${attachmentId} is not on message ${messageId}.`,
-        'Attachment ids can change between calls. Re-read the message and use a fresh id.',
-      );
-    }
 
     const data = await this.client.get<GmailAttachmentResponse>(
       `messages/${messageId}/attachments/${attachmentId}`,
@@ -165,7 +157,7 @@ export class GmailProvider implements MailProvider {
     }
 
     const bytes = decodeBase64UrlBytes(data.data);
-    return { ...meta, size: bytes.byteLength, bytes: new Uint8Array(bytes) };
+    return { attachment_id: attachmentId, size: bytes.byteLength, bytes: new Uint8Array(bytes) };
   }
 }
 

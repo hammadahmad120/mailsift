@@ -10,9 +10,11 @@ import type {
   Document,
   MailProvider,
   MailboxProfile,
+  RawAttachment,
   RawMessage,
   SearchResult,
 } from '../src/providers/types.js';
+import type { AttachmentTextResult } from '../src/tools/get-attachment-text.js';
 import { createDefaultDeps, createServer, type ServerDeps } from '../src/server.js';
 
 const FAKE_TOKEN = 'ya29.test-token-must-never-leak';
@@ -86,6 +88,7 @@ describe('createServer', () => {
     const { tools } = await client.listTools();
 
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'get_attachment_text',
       'get_email',
       'get_mailbox_profile',
       'search_mail',
@@ -281,6 +284,32 @@ describe('search_mail', () => {
 
     expect(search.mock.calls[0]?.[1]).toEqual({ page_size: 25 });
     expect(search.mock.calls[1]?.[1]).toEqual({ page_size: 50, page_token: 'tok-2' });
+  });
+
+  it('drops blank fields and empty lists before calling the provider', async () => {
+    const search = vi.fn<MailProvider['search']>(() => Promise.resolve(searchResult));
+    const client = await connect(fakeDeps({ createProvider: () => fakeProvider({ search }) }));
+
+    await client.callTool({
+      name: 'search_mail',
+      arguments: {
+        subject: ' Node ',
+        from: '',
+        to: '   ',
+        keywords: ['', ' remote '],
+        any_keywords: [],
+        after: '',
+        attachment_types: [],
+        label: '',
+        raw_query: '',
+        page_token: '',
+      },
+    });
+
+    expect(search).toHaveBeenCalledWith(
+      { subject: 'Node', keywords: ['remote'] },
+      { page_size: 25 },
+    );
   });
 
   it('returns QUERY_EMPTY as a structured error, not a crash', async () => {
@@ -512,7 +541,212 @@ const EVERY_TOOL: Array<{ name: string; arguments: Record<string, unknown> }> = 
   { name: 'get_mailbox_profile', arguments: {} },
   { name: 'search_mail', arguments: { subject: 'x' } },
   { name: 'get_email', arguments: { message_id: 'm1' } },
+  { name: 'get_attachment_text', arguments: { message_id: 'm1', attachment_id: 'a1' } },
 ];
+
+const samplePdf = new Uint8Array(
+  readFileSync(new URL('./fixtures/attachments/sample.pdf', import.meta.url)),
+);
+
+function rawAttachment(overrides: Partial<RawAttachment> = {}): RawAttachment {
+  return { attachment_id: 'att-1', size: samplePdf.byteLength, bytes: samplePdf, ...overrides };
+}
+
+/** A provider whose message lists report.pdf as att-1 and serves its bytes. */
+function attachmentProvider(overrides: Partial<MailProvider> = {}): {
+  provider: MailProvider;
+  getMessage: ReturnType<typeof vi.fn<MailProvider['getMessage']>>;
+  getAttachment: ReturnType<typeof vi.fn<MailProvider['getAttachment']>>;
+} {
+  const getMessage = vi.fn<MailProvider['getMessage']>(() => Promise.resolve(rawMessage()));
+  const getAttachment = vi.fn<MailProvider['getAttachment']>(() =>
+    Promise.resolve(rawAttachment()),
+  );
+  return {
+    provider: fakeProvider({ getMessage, getAttachment, ...overrides }),
+    getMessage,
+    getAttachment,
+  };
+}
+
+describe('get_attachment_text', () => {
+  it('reads the message, matches the attachment_id, fetches with it, parses, returns text with pages', async () => {
+    const { provider, getMessage, getAttachment } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const result = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: { message_id: '18f3a9c0ffee0001', attachment_id: 'att-1' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(getMessage).toHaveBeenCalledWith('18f3a9c0ffee0001');
+    expect(getAttachment).toHaveBeenCalledWith('18f3a9c0ffee0001', 'att-1');
+    const body = JSON.parse(textOf(result, 0)) as AttachmentTextResult;
+    expect(body).toMatchObject({
+      attachment_id: 'att-1',
+      filename: 'report.pdf',
+      mime: 'application/pdf',
+      size: 940,
+      truncated: false,
+      pages: 2,
+      skipped_reason: null,
+    });
+    expect(body.text).toContain('Quarterly report for Example Co.');
+    expect(textOf(result, 1)).toContain('2 page(s)');
+  });
+
+  it('finds the attachment by filename, case-insensitive', async () => {
+    const { provider, getAttachment } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const result = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: { message_id: '18f3a9c0ffee0001', filename: 'REPORT.pdf' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(getAttachment).toHaveBeenCalledWith('18f3a9c0ffee0001', 'att-1');
+  });
+
+  it('uses the fresh id from the message when the given attachment_id is stale', async () => {
+    const { provider, getAttachment } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const withName = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: {
+        message_id: '18f3a9c0ffee0001',
+        attachment_id: 'stale-id',
+        filename: 'report.pdf',
+      },
+    });
+    expect(withName.isError).toBeFalsy();
+
+    const onlyOne = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: { message_id: '18f3a9c0ffee0001', attachment_id: 'stale-id' },
+    });
+    expect(onlyOne.isError).toBeFalsy();
+
+    expect(getAttachment.mock.calls).toEqual([
+      ['18f3a9c0ffee0001', 'att-1'],
+      ['18f3a9c0ffee0001', 'att-1'],
+    ]);
+    expect((JSON.parse(textOf(onlyOne, 0)) as AttachmentTextResult).attachment_id).toBe('att-1');
+  });
+
+  it('is NOT_FOUND with the filenames when a stale id meets several attachments and no filename', async () => {
+    const two = rawMessage({
+      attachments: [
+        { attachment_id: 'att-1', filename: 'report.pdf', mime: 'application/pdf', size: 1 },
+        { attachment_id: 'att-2', filename: 'notes.docx', mime: 'application/x', size: 1 },
+      ],
+    });
+    const { provider, getAttachment } = attachmentProvider({
+      getMessage: () => Promise.resolve(two),
+    });
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const result = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: { message_id: '18f3a9c0ffee0001', attachment_id: 'stale-id' },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({
+      code: 'NOT_FOUND',
+      hint: expect.stringContaining('report.pdf, notes.docx') as string,
+    });
+    expect(getAttachment).not.toHaveBeenCalled();
+  });
+
+  it('returns NOT_FOUND with the available filenames when the name does not match', async () => {
+    const { provider } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+    const result = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: { message_id: '18f3a9c0ffee0001', filename: 'missing.pdf' },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({
+      code: 'NOT_FOUND',
+      hint: expect.stringContaining('report.pdf') as string,
+    });
+  });
+
+  it('treats a blank attachment_id as absent, as MCP Inspector sends it', async () => {
+    const { provider, getAttachment } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+    const result = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: { message_id: '18f3a9c0ffee0001', attachment_id: '', filename: ' report.pdf ' },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(getAttachment).toHaveBeenCalledWith('18f3a9c0ffee0001', 'att-1');
+  });
+
+  it('refuses a call with neither attachment_id nor filename', async () => {
+    const { provider, getMessage, getAttachment } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+    const result = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: { message_id: '18f3a9c0ffee0001' },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({ code: 'NOT_FOUND' });
+    expect(getMessage).not.toHaveBeenCalled();
+    expect(getAttachment).not.toHaveBeenCalled();
+  });
+
+  it('returns a skipped attachment as a value, not an error', async () => {
+    const zipMessage = rawMessage({
+      attachments: [
+        { attachment_id: 'att-1', filename: 'all.zip', mime: 'application/zip', size: 3 },
+      ],
+    });
+    const { provider } = attachmentProvider({
+      getMessage: () => Promise.resolve(zipMessage),
+      getAttachment: () => Promise.resolve(rawAttachment({ bytes: new Uint8Array(3), size: 3 })),
+    });
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+    const result = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: { message_id: '18f3a9c0ffee0001', attachment_id: 'att-1' },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({
+      filename: 'all.zip',
+      text: '',
+      skipped_reason: 'ATTACHMENT_UNSUPPORTED',
+      pages: null,
+    });
+    expect(textOf(result, 1)).toContain('skipped: ATTACHMENT_UNSUPPORTED');
+  });
+
+  it('truncates at max_chars and defaults to MAX_ATTACHMENT_CHARS', async () => {
+    const { provider } = attachmentProvider();
+    const client = await connect(
+      fakeDeps({
+        config: loadConfig({ MAX_ATTACHMENT_CHARS: '12' }),
+        createProvider: () => provider,
+      }),
+    );
+    const byDefault = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: { message_id: '18f3a9c0ffee0001', attachment_id: 'att-1' },
+    });
+    const a = JSON.parse(textOf(byDefault, 0)) as AttachmentTextResult;
+    expect(a.text).toBe('Quarterly re');
+    expect(a.truncated).toBe(true);
+
+    const explicit = await client.callTool({
+      name: 'get_attachment_text',
+      arguments: { message_id: '18f3a9c0ffee0001', attachment_id: 'att-1', max_chars: 5 },
+    });
+    expect((JSON.parse(textOf(explicit, 0)) as AttachmentTextResult).text).toBe('Quart');
+  });
+});
 
 describe('withMailbox (every tool)', () => {
   it('returns AUTH_MISSING_TOKEN from every tool when no token is configured', async () => {

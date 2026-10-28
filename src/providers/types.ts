@@ -142,7 +142,14 @@ export interface RawMessage {
   attachments: AttachmentMeta[];
 }
 
-export interface RawAttachment extends AttachmentMeta {
+/**
+ * Attachment bytes only. Gmail's attachment endpoint returns no filename or mime,
+ * and attachment ids change on every message read, so metadata always comes from
+ * the message the caller has just read, never from a second lookup by id.
+ */
+export interface RawAttachment {
+  attachment_id: string;
+  size: number;
   bytes: Uint8Array;
 }
 
@@ -157,5 +164,6 @@ export interface MailProvider {
   getMessage(messageId: string): Promise<RawMessage>;
   /** Messages in the thread, ordered oldest to newest. */
   getThread(threadId: string): Promise<RawMessage[]>;
+  /** Bytes for an attachment id taken from a *fresh* read of the message. */
   getAttachment(messageId: string, attachmentId: string): Promise<RawAttachment>;
 }

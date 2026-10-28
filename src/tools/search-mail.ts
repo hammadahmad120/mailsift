@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ATTACHMENT_TYPES } from '../providers/types.js';
 import type { SearchFilters, SearchPage } from '../providers/types.js';
 import type { ServerDeps } from '../server.js';
+import { optionalText, present, presentList } from './args.js';
 import { toolResult } from './result.js';
 import { withMailbox } from './with-mailbox.js';
 
@@ -12,60 +13,68 @@ import { withMailbox } from './with-mailbox.js';
  * model reads, so they say how each maps to the mailbox search.
  */
 
-const DATE = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
-  .describe('YYYY-MM-DD');
+/** YYYY-MM-DD, or blank (treated as absent). */
+const DATE = z.string().regex(/^(\d{4}-\d{2}-\d{2}|\s*)$/, 'Use YYYY-MM-DD');
 
-const words = (what: string) => z.array(z.string().min(1)).min(1).describe(what);
+const words = (what: string) => z.array(z.string()).optional().describe(what);
 
 export const searchMailInput = {
-  subject: z.string().min(1).optional().describe('Words that must all appear in the subject.'),
-  from: z.string().min(1).optional().describe('Sender address or name.'),
-  to: z.string().min(1).optional().describe('Recipient address or name.'),
-  keywords: words('Words that must all appear anywhere in the message (AND).').optional(),
-  any_keywords: words('Words where at least one must appear (OR).').optional(),
+  subject: optionalText('Words that must all appear in the subject.'),
+  from: optionalText('Sender address or name.'),
+  to: optionalText('Recipient address or name.'),
+  keywords: words('Words that must all appear anywhere in the message (AND).'),
+  any_keywords: words('Words where at least one must appear (OR).'),
   after: DATE.optional().describe('Only messages on or after this date (YYYY-MM-DD).'),
   before: DATE.optional().describe('Only messages before this date (YYYY-MM-DD, exclusive).'),
   has_attachment: z.boolean().optional().describe('true: only messages with attachments.'),
   attachment_types: z
     .array(z.enum(ATTACHMENT_TYPES))
-    .min(1)
     .optional()
     .describe('Only messages with an attachment of one of these file types.'),
-  label: z.string().min(1).optional().describe('Mailbox label name.'),
-  raw_query: z
-    .string()
-    .min(1)
-    .optional()
-    .describe('Provider-native search syntax, appended to the generated query.'),
+  label: optionalText('Mailbox label name.'),
+  raw_query: optionalText('Provider-native search syntax, appended to the generated query.'),
   page_size: z
     .number()
     .int()
     .min(1)
     .optional()
     .describe('Results per page. Default 25. Values above the server cap are lowered to it.'),
-  page_token: z.string().min(1).optional().describe('next_page_token from a previous reply.'),
+  page_token: optionalText('next_page_token from a previous reply.'),
 };
 
 const DEFAULT_PAGE_SIZE = 25;
 
 type SearchMailArgs = z.infer<z.ZodObject<typeof searchMailInput>>;
 
-/** Split validated args into provider filters and paging; drop undefined keys. */
+/** Split validated args into provider filters and paging; blank and empty values are dropped. */
 export function toSearchCall(
   args: SearchMailArgs,
   maxPageSize: number,
 ): { filters: SearchFilters; page: SearchPage } {
-  const { page_size, page_token, ...rest } = args;
   const filters: SearchFilters = {};
-  for (const [key, value] of Object.entries(rest)) {
-    if (value !== undefined) (filters as Record<string, unknown>)[key] = value;
-  }
-  const page: SearchPage = {
-    page_size: Math.min(page_size ?? DEFAULT_PAGE_SIZE, maxPageSize),
+  const set = <K extends keyof SearchFilters>(
+    key: K,
+    value: SearchFilters[K] | undefined,
+  ): void => {
+    if (value !== undefined) filters[key] = value;
   };
-  if (page_token !== undefined) page.page_token = page_token;
+  set('subject', present(args.subject));
+  set('from', present(args.from));
+  set('to', present(args.to));
+  set('keywords', presentList(args.keywords));
+  set('any_keywords', presentList(args.any_keywords));
+  set('after', present(args.after));
+  set('before', present(args.before));
+  set('has_attachment', args.has_attachment);
+  set('attachment_types', args.attachment_types?.length ? args.attachment_types : undefined);
+  set('label', present(args.label));
+  set('raw_query', present(args.raw_query));
+
+  const page: SearchPage = {
+    page_size: Math.min(args.page_size ?? DEFAULT_PAGE_SIZE, maxPageSize),
+  };
+  const token = present(args.page_token);
+  if (token !== undefined) page.page_token = token;
   return { filters, page };
 }
 

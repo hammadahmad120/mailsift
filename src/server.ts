@@ -8,6 +8,7 @@ import { loadConfig } from './config.js';
 import { createGmailClient } from './providers/gmail/client.js';
 import { GmailProvider } from './providers/gmail/provider.js';
 import type { MailProvider } from './providers/types.js';
+import { registerGetAttachmentText } from './tools/get-attachment-text.js';
 import { registerGetEmail } from './tools/get-email.js';
 import { registerGetMailboxProfile } from './tools/get-mailbox-profile.js';
 import { registerSearchMail } from './tools/search-mail.js';
@@ -54,13 +55,15 @@ export function createServer(deps: ServerDeps): McpServer {
     instructions:
       'Read-only mailbox access. Use get_mailbox_profile to confirm the connection, ' +
       'then search_mail to find messages by subject, sender, dates, keywords or attachments, ' +
-      'then get_email with a message_id to read one. ' +
+      'then get_email with a message_id to read one, ' +
+      'and get_attachment_text to read a pdf, docx or text attachment. ' +
       'No tool can send, modify, label, or delete mail.',
   });
 
   registerGetMailboxProfile(server, deps);
   registerSearchMail(server, deps);
   registerGetEmail(server, deps);
+  registerGetAttachmentText(server, deps);
 
   return server;
 }

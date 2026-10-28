@@ -2,7 +2,7 @@
 
 Your mailbox, as documents your AI can actually read. Read-only MCP server that searches mail and returns clean text with attachments extracted.
 
-> Status: early. Three tools (`get_mailbox_profile`, `search_mail`, `get_email`) over stdio. Bodies are still raw (no quote or signature stripping yet); text cleaning, attachments, and HTTP are in progress. See [docs/status.md](docs/status.md) for the phase tracker and [docs/design-brief.md](docs/design-brief.md) for the full design.
+> Status: early. Four tools (`get_mailbox_profile`, `search_mail`, `get_email`, `get_attachment_text`) over stdio. Email bodies are still raw in `get_email` until the cleaning pipeline is wired in; attachment text works. HTTP is in progress. See [docs/status.md](docs/status.md) for the phase tracker and [docs/design-brief.md](docs/design-brief.md) for the full design.
 
 ## Development
 
