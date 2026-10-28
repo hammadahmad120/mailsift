@@ -3,6 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CredentialResolver } from '../src/auth/credentials.js';
+import type { ScopeCheck } from '../src/auth/scope-check.js';
 import { MailError } from '../src/errors.js';
 import { loadConfig } from '../src/config.js';
 import type {
@@ -15,6 +16,7 @@ import type {
 import { createDefaultDeps, createServer, type ServerDeps } from '../src/server.js';
 
 const FAKE_TOKEN = 'ya29.test-token-must-never-leak';
+const READONLY = 'https://www.googleapis.com/auth/gmail.readonly';
 
 const profile: MailboxProfile = {
   email_address: 'someone@example.com',
@@ -42,6 +44,7 @@ function fakeDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
   return {
     config: loadConfig({}),
     resolveCredentials: () => Promise.resolve({ provider: 'gmail', token: FAKE_TOKEN }),
+    checkScope: () => Promise.resolve({ scopes: [READONLY] }),
     createProvider: () => fakeProvider(),
     ...overrides,
   };
@@ -140,7 +143,9 @@ describe('get_mailbox_profile', () => {
     expect(JSON.parse(textOf(result, 0))).toEqual(profile);
     expect(textOf(result, 1)).toContain('someone@example.com');
     expect(textOf(result, 1)).toContain('48213');
-    expect(createProvider).toHaveBeenCalledWith({ provider: 'gmail', token: FAKE_TOKEN });
+    expect(createProvider).toHaveBeenCalledWith({ provider: 'gmail', token: FAKE_TOKEN }, [
+      READONLY,
+    ]);
   });
 
   it('builds a fresh provider per call and passes the handler extra to the resolver', async () => {
@@ -503,8 +508,71 @@ describe('get_email', () => {
   });
 });
 
+const EVERY_TOOL: Array<{ name: string; arguments: Record<string, unknown> }> = [
+  { name: 'get_mailbox_profile', arguments: {} },
+  { name: 'search_mail', arguments: { subject: 'x' } },
+  { name: 'get_email', arguments: { message_id: 'm1' } },
+];
+
+describe('withMailbox (every tool)', () => {
+  it('returns AUTH_MISSING_TOKEN from every tool when no token is configured', async () => {
+    const checkScope = vi.fn<ScopeCheck>();
+    const createProvider = vi.fn(() => fakeProvider());
+    const client = await connect(
+      fakeDeps({
+        resolveCredentials: () => Promise.reject(new MailError('AUTH_MISSING_TOKEN')),
+        checkScope,
+        createProvider,
+      }),
+    );
+
+    for (const call of EVERY_TOOL) {
+      const result = await client.callTool(call);
+      expect(result.isError, call.name).toBe(true);
+      expect(JSON.parse(textOf(result, 0))).toMatchObject({ code: 'AUTH_MISSING_TOKEN' });
+    }
+    expect(checkScope).not.toHaveBeenCalled();
+    expect(createProvider).not.toHaveBeenCalled();
+  });
+
+  it('returns AUTH_SCOPE_TOO_BROAD from every tool before any provider is built', async () => {
+    const checkScope = vi.fn<ScopeCheck>(() =>
+      Promise.reject(new MailError('AUTH_SCOPE_TOO_BROAD', 'Token carries gmail.modify.')),
+    );
+    const createProvider = vi.fn(() => fakeProvider());
+    const client = await connect(fakeDeps({ checkScope, createProvider }));
+
+    for (const call of EVERY_TOOL) {
+      const result = await client.callTool(call);
+      expect(result.isError, call.name).toBe(true);
+      expect(JSON.parse(textOf(result, 0))).toMatchObject({
+        code: 'AUTH_SCOPE_TOO_BROAD',
+        hint: 'Reconnect the mailbox with read-only access only.',
+      });
+    }
+    expect(checkScope).toHaveBeenCalledTimes(EVERY_TOOL.length);
+    expect(checkScope).toHaveBeenCalledWith(FAKE_TOKEN);
+    expect(createProvider).not.toHaveBeenCalled();
+  });
+
+  it('hands the verified scopes to the provider so the profile reports them', async () => {
+    const scopes = [READONLY, 'openid'];
+    const createProvider = vi.fn((_c, s: readonly string[]) =>
+      fakeProvider({ getProfile: () => Promise.resolve({ ...profile, scopes: [...s] }) }),
+    );
+    const client = await connect(
+      fakeDeps({ checkScope: () => Promise.resolve({ scopes }), createProvider }),
+    );
+
+    const result = await client.callTool({ name: 'get_mailbox_profile', arguments: {} });
+
+    expect(createProvider.mock.calls[0]?.[1]).toEqual(scopes);
+    expect((JSON.parse(textOf(result, 0)) as MailboxProfile).scopes).toEqual(scopes);
+  });
+});
+
 describe('createDefaultDeps', () => {
-  it('wires env config and credentials without touching the network', async () => {
+  it('wires env config, credentials and the scope check without touching the network', async () => {
     const deps = createDefaultDeps({ MAIL_TOKEN: FAKE_TOKEN, GMAIL_TIMEOUT_MS: '1234' });
 
     expect(deps.config.limits.gmailTimeoutMs).toBe(1234);
@@ -512,7 +580,10 @@ describe('createDefaultDeps', () => {
       provider: 'gmail',
       token: FAKE_TOKEN,
     });
-    expect(deps.createProvider({ provider: 'gmail', token: FAKE_TOKEN }).name).toBe('gmail');
+    expect(typeof deps.checkScope).toBe('function');
+    expect(deps.createProvider({ provider: 'gmail', token: FAKE_TOKEN }, [READONLY]).name).toBe(
+      'gmail',
+    );
     expect(JSON.stringify(deps.config)).not.toContain(FAKE_TOKEN);
   });
 });

@@ -1,17 +1,17 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { toToolError } from '../errors.js';
 import type { ServerDeps } from '../server.js';
 import { toolResult } from './result.js';
+import { withMailbox } from './with-mailbox.js';
 
 /**
  * `get_mailbox_profile`: the connection-test tool (brief 8.5).
  * No input. Returns who the mailbox belongs to and how big it is.
  *
- * Every later tool follows this exact pattern:
+ * Every tool follows this exact pattern:
  *   1. declare name, description, zod input shape, read-only annotations
- *   2. resolve credentials from `extra` (env now, headers in phase 5)
- *   3. build the provider, call one of its five read methods
- *   4. return `toolResult(json, summary)`; any throw becomes `toToolError(err)`
+ *   2. `withMailbox(deps, extra, fn)`: credentials, scope check, provider, error mapping
+ *   3. inside `fn`, call one of the provider's five read methods
+ *   4. return `toolResult(json, summary)`
  */
 export function registerGetMailboxProfile(server: McpServer, deps: ServerDeps): void {
   server.registerTool(
@@ -29,20 +29,14 @@ export function registerGetMailboxProfile(server: McpServer, deps: ServerDeps): 
         openWorldHint: true,
       },
     },
-    async (_args, extra) => {
-      try {
-        const credentials = await deps.resolveCredentials(extra);
-        const provider = deps.createProvider(credentials);
+    (_args, extra) =>
+      withMailbox(deps, extra, async (provider) => {
         const profile = await provider.getProfile();
-
         return toolResult(
           profile,
           `Connected to ${profile.email_address} via ${profile.provider} (read-only): ` +
             `${profile.messages_total} messages, ${profile.threads_total} threads.`,
         );
-      } catch (err) {
-        return toToolError(err);
-      }
-    },
+      }),
   );
 }

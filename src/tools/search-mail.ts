@@ -1,10 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { toToolError } from '../errors.js';
 import { ATTACHMENT_TYPES } from '../providers/types.js';
 import type { SearchFilters, SearchPage } from '../providers/types.js';
 import type { ServerDeps } from '../server.js';
 import { toolResult } from './result.js';
+import { withMailbox } from './with-mailbox.js';
 
 /**
  * `search_mail`: find messages by facts (brief 8.1). Metadata only, never bodies.
@@ -89,11 +89,9 @@ export function registerSearchMail(server: McpServer, deps: ServerDeps): void {
         openWorldHint: true,
       },
     },
-    async (args, extra) => {
-      try {
+    (args, extra) =>
+      withMailbox(deps, extra, async (provider) => {
         const { filters, page } = toSearchCall(args, deps.config.limits.maxPageSize);
-        const credentials = await deps.resolveCredentials(extra);
-        const provider = deps.createProvider(credentials);
         const result = await provider.search(filters, page);
 
         const more = result.next_page_token ? ' More pages available.' : '';
@@ -102,9 +100,6 @@ export function registerSearchMail(server: McpServer, deps: ServerDeps): void {
           `Found about ${result.result_size_estimate} matching messages, ` +
             `showing ${result.items.length}.${more} Query: ${result.query_used}`,
         );
-      } catch (err) {
-        return toToolError(err);
-      }
-    },
+      }),
   );
 }

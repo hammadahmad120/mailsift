@@ -1,9 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { toToolError } from '../errors.js';
 import { toDocument } from '../parse/document.js';
 import type { ServerDeps } from '../server.js';
 import { toolResult } from './result.js';
+import { withMailbox } from './with-mailbox.js';
 
 /**
  * `get_email`: one message as a Document (brief 8.2).
@@ -44,11 +44,8 @@ export function registerGetEmail(server: McpServer, deps: ServerDeps): void {
         openWorldHint: true,
       },
     },
-    async (args, extra) => {
-      try {
-        const credentials = await deps.resolveCredentials(extra);
-        const provider = deps.createProvider(credentials);
-
+    (args, extra) =>
+      withMailbox(deps, extra, async (provider) => {
         const raw = await provider.getMessage(args.message_id);
         const thread = args.include_thread ? await provider.getThread(raw.thread_id) : undefined;
 
@@ -66,9 +63,6 @@ export function registerGetEmail(server: McpServer, deps: ServerDeps): void {
         if (thread) parts.push(`thread of ${thread.length} message(s)`);
         if (document.truncated) parts.push('truncated');
         return toolResult(document, parts.join(', ') + '.');
-      } catch (err) {
-        return toToolError(err);
-      }
-    },
+      }),
   );
 }

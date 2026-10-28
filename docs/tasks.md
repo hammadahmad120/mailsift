@@ -122,7 +122,7 @@ Goal: find messages by filters and read one message's body. No cleaning yet, no 
   - Files: `src/tools/get-email.ts`, `test/server.test.ts`.
   - Verify: test checks truncation flag and thread text presence. Manual: paste a `message_id` from your search into Inspector and read the body.
 
-- [ ] **2.8 Shared tool wrapper**
+- [x] **2.8 Shared tool wrapper** (verified 2026-10-28)
   - Build: `withMailbox(extra, fn)` that does the full per-call sequence: resolve credentials, scope check, build provider, run `fn`, map errors. Every tool handler becomes three lines.
   - Why: guarantees no tool can forget the scope check.
   - Files: `src/tools/with-mailbox.ts`, `test/server.test.ts`.
