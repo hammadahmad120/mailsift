@@ -1,11 +1,12 @@
 import type { Document, DocumentAttachment, ProviderName, RawMessage } from '../providers/types.js';
+import { flattenThread } from './thread.js';
 
 /**
  * Build the Document (brief section 9) from provider output. Pure.
  *
- * Phase 2: `text` is the raw body as the provider gave it (plain text, or HTML
- * untouched). Phase 3 replaces `rawBodyText` with the cleaning pipeline and
- * `rawThreadText` with `flattenThread`, at these two call sites only.
+ * `thread_text` is the cleaned, flattened thread (task 3.4). `text` is still
+ * the raw body; task 3.8 replaces `rawBodyText` with `bodyToText` at that one
+ * call site.
  */
 
 export interface DocumentOptions {
@@ -31,16 +32,6 @@ export function rawBodyText(raw: RawMessage): string {
   return raw.body?.content ?? '';
 }
 
-/** `--- From <from> on <date> ---` before each message, oldest first (brief section 11). */
-export function rawThreadText(messages: readonly RawMessage[]): string {
-  return messages
-    .map(
-      (m) =>
-        `--- From ${m.headers.from || 'unknown'} on ${m.headers.date || 'unknown date'} ---\n${rawBodyText(m)}`,
-    )
-    .join('\n\n');
-}
-
 /** Attachments listed only: `text: null`, nothing extracted. Phase 3 fills text. */
 export function listedAttachments(raw: RawMessage): DocumentAttachment[] {
   return raw.attachments.map((a) => ({ ...a, text: null, truncated: false, skipped_reason: null }));
@@ -61,7 +52,7 @@ export function toDocument(raw: RawMessage, options: DocumentOptions): Document 
   };
 
   if (options.thread) {
-    const thread = truncate(rawThreadText(options.thread), options.maxChars);
+    const thread = truncate(flattenThread(options.thread), options.maxChars);
     document.thread_text = thread.text;
     if (thread.truncated) document.truncated = true;
   }

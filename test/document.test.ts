@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rawThreadText, toDocument, truncate } from '../src/parse/document.js';
+import { toDocument, truncate } from '../src/parse/document.js';
 import type { RawMessage } from '../src/providers/types.js';
 
 const raw: RawMessage = {
@@ -64,26 +64,5 @@ describe('toDocument', () => {
     expect(doc.text).toBe('Body text.');
     expect(doc.thread_text).toHaveLength(40);
     expect(doc.truncated).toBe(true);
-  });
-});
-
-describe('rawThreadText', () => {
-  it('prefixes each message with the separator and keeps the given order', () => {
-    const other: RawMessage = {
-      ...raw,
-      message_id: 'm1',
-      headers: { ...raw.headers, from: 'Bob <bob@example.com>', date: '2026-10-13T00:00:00.000Z' },
-      body: { kind: 'html', content: '<p>Earlier</p>' },
-    };
-    expect(rawThreadText([other, raw])).toBe(
-      '--- From Bob <bob@example.com> on 2026-10-13T00:00:00.000Z ---\n<p>Earlier</p>\n\n' +
-        '--- From Alice <alice@example.com> on 2026-10-14T05:30:00.000Z ---\nBody text.',
-    );
-  });
-
-  it('falls back to placeholders for missing from or date', () => {
-    const bare = { ...raw, headers: { ...raw.headers, from: '', date: '' }, body: null };
-    expect(rawThreadText([bare])).toBe('--- From unknown on unknown date ---\n');
-    expect(rawThreadText([])).toBe('');
   });
 });

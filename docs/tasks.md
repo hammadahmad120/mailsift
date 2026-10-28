@@ -152,7 +152,7 @@ Goal: bodies come out clean, attachments come out as text, `get_attachment_text`
   - Files: `src/parse/quotes.ts`, `test/quotes.test.ts`.
   - Verify: tests for the 200-char rule in both directions.
 
-- [ ] **3.4 Thread flattening**
+- [x] **3.4 Thread flattening** (verified 2026-10-28, checked in Inspector on a real thread)
   - Build: `flattenThread(messages)` producing `--- From <from> on <date> ---` separated text in date order, each body cleaned.
   - Files: `src/parse/thread.ts`, `test/thread.test.ts`.
   - Verify: test with three messages out of order checks ordering and separators.
