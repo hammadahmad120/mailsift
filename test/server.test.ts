@@ -368,7 +368,7 @@ function rawMessage(overrides: Partial<RawMessage> = {}): RawMessage {
 }
 
 describe('get_email', () => {
-  it('returns a Document with raw body, listed attachments and no thread by default', async () => {
+  it('returns a Document with clean body, listed attachments and no thread by default', async () => {
     const getMessage = vi.fn<MailProvider['getMessage']>(() => Promise.resolve(rawMessage()));
     const getThread = vi.fn<MailProvider['getThread']>();
     const client = await connect(
@@ -400,7 +400,7 @@ describe('get_email', () => {
         cc: [],
         subject: 'Plain text message',
       },
-      text: 'Hello,\n\nHere is the plain text body.\n',
+      text: 'Hello,\n\nHere is the plain text body.',
       attachments: [
         {
           attachment_id: 'att-1',
@@ -496,13 +496,17 @@ describe('get_email', () => {
     expect(textOf(result, 1)).toContain('thread of 2');
   });
 
-  it('keeps html bodies as html in phase 2', async () => {
+  it('cleans the body: html converted, quoted reply and signature removed', async () => {
+    const html =
+      '<div dir="ltr">Sounds good, see you Thursday.</div><div><br></div>' +
+      '<div class="gmail_signature">Alice Example<br>Head of Ops</div>' +
+      '<div class="gmail_quote">On Mon, Bob wrote:<blockquote>Thursday?</blockquote></div>';
     const client = await connect(
       fakeDeps({
         createProvider: () =>
           fakeProvider({
             getMessage: () =>
-              Promise.resolve(rawMessage({ body: { kind: 'html', content: '<p>Hi</p>' } })),
+              Promise.resolve(rawMessage({ body: { kind: 'html', content: html } })),
           }),
       }),
     );
@@ -510,7 +514,102 @@ describe('get_email', () => {
       name: 'get_email',
       arguments: { message_id: '18f3a9c0ffee0001' },
     });
-    expect((JSON.parse(textOf(result, 0)) as Document).text).toBe('<p>Hi</p>');
+    expect((JSON.parse(textOf(result, 0)) as Document).text).toBe('Sounds good, see you Thursday.');
+  });
+
+  it('attachments: "text" fetches each attachment with ids from the same read and fills text', async () => {
+    const { provider, getMessage, getAttachment } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const result = await client.callTool({
+      name: 'get_email',
+      arguments: { message_id: '18f3a9c0ffee0001', attachments: 'text' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(getMessage).toHaveBeenCalledTimes(1);
+    expect(getAttachment).toHaveBeenCalledWith('18f3a9c0ffee0001', 'att-1');
+    const doc = JSON.parse(textOf(result, 0)) as Document;
+    expect(doc.attachments).toHaveLength(1);
+    expect(doc.attachments[0]).toMatchObject({
+      attachment_id: 'att-1',
+      filename: 'report.pdf',
+      truncated: false,
+      skipped_reason: null,
+    });
+    expect(doc.attachments[0]?.text).toContain('Quarterly report for Example Co.');
+    expect(textOf(result, 1)).toContain('1 of 1 attachment(s) extracted');
+  });
+
+  it('attachments: "text" caps each attachment at max_attachment_chars', async () => {
+    const { provider } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+    const result = await client.callTool({
+      name: 'get_email',
+      arguments: { message_id: '18f3a9c0ffee0001', attachments: 'text', max_attachment_chars: 9 },
+    });
+    const doc = JSON.parse(textOf(result, 0)) as Document;
+    expect(doc.attachments[0]?.text).toBe('Quarterly');
+    expect(doc.attachments[0]?.truncated).toBe(true);
+    expect(doc.truncated).toBe(false);
+  });
+
+  it('attachments: "text" marks one failing attachment as skipped and keeps the rest', async () => {
+    const two = rawMessage({
+      attachments: [
+        { attachment_id: 'bad', filename: 'old.pdf', mime: 'application/pdf', size: 1 },
+        { attachment_id: 'att-1', filename: 'report.pdf', mime: 'application/pdf', size: 940 },
+        { attachment_id: 'zip', filename: 'all.zip', mime: 'application/zip', size: 3 },
+      ],
+    });
+    const getAttachment = vi.fn<MailProvider['getAttachment']>((_m, id) =>
+      id === 'bad'
+        ? Promise.reject(new MailError('NOT_FOUND', 'stale'))
+        : Promise.resolve(
+            rawAttachment({
+              attachment_id: id,
+              bytes: id === 'zip' ? new Uint8Array(3) : samplePdf,
+            }),
+          ),
+    );
+    const client = await connect(
+      fakeDeps({
+        createProvider: () =>
+          fakeProvider({ getMessage: () => Promise.resolve(two), getAttachment }),
+      }),
+    );
+
+    const result = await client.callTool({
+      name: 'get_email',
+      arguments: { message_id: '18f3a9c0ffee0001', attachments: 'text' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const doc = JSON.parse(textOf(result, 0)) as Document;
+    expect(doc.attachments.map((a) => [a.filename, a.skipped_reason, a.text === null])).toEqual([
+      ['old.pdf', 'PARSE_FAILED', true],
+      ['report.pdf', null, false],
+      ['all.zip', 'ATTACHMENT_UNSUPPORTED', true],
+    ]);
+    expect(textOf(result, 1)).toContain('1 of 3 attachment(s) extracted');
+  });
+
+  it('attachments: "none" omits the list and "list" leaves text null without fetching', async () => {
+    const { provider, getAttachment } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const none = await client.callTool({
+      name: 'get_email',
+      arguments: { message_id: '18f3a9c0ffee0001', attachments: 'none' },
+    });
+    expect((JSON.parse(textOf(none, 0)) as Document).attachments).toEqual([]);
+
+    const list = await client.callTool({
+      name: 'get_email',
+      arguments: { message_id: '18f3a9c0ffee0001', attachments: 'list' },
+    });
+    expect((JSON.parse(textOf(list, 0)) as Document).attachments[0]?.text).toBeNull();
+    expect(getAttachment).not.toHaveBeenCalled();
   });
 
   it('returns NOT_FOUND as a structured error', async () => {

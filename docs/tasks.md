@@ -168,16 +168,16 @@ Goal: bodies come out clean, attachments come out as text, `get_attachment_text`
   - Files: `src/providers/gmail/provider.ts`, `test/fixtures/gmail/attachment.json`.
   - Verify: test decodes the recorded base64url into the expected byte length.
 
-- [ ] **3.7 `get_attachment_text` tool**
+- [x] **3.7 `get_attachment_text` tool** (verified 2026-10-28, real PDF read in Inspector; stale-id and blank-field bugs found and fixed during verify)
   - Build: tool accepting `attachment_id` or `filename`, with the filename fallback when the id is stale.
   - Files: `src/tools/get-attachment-text.ts`, `test/server.test.ts`.
   - Verify: test simulates a stale id (`NOT_FOUND`) and sees the fallback succeed by filename. Manual: pull a real PDF's text in Inspector.
 
-- [ ] **3.8 Wire cleaning and attachments into `get_email`**
+- [x] **3.8 Wire cleaning and attachments into `get_email`** (verified 2026-10-28)
   - Build: `get_email` now returns cleaned `text`, honours `attachments: "text" | "list" | "none"`, and `max_attachment_chars`.
   - Verify: Inspector shows a reply email with the quoted history gone and the PDF text inline.
 
-- [ ] **3.9 Phase 3 docs sync**
+- [x] **3.9 Phase 3 docs sync** (verified 2026-10-28)
 
 ---
 

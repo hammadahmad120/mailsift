@@ -342,7 +342,11 @@ mailsift/
         pdf.ts
         docx.ts
         text.ts
-    tools/                   # one file per tool
+    tools/                   # one file per tool, plus shared helpers:
+      with-mailbox.ts        #   credentials -> scope check -> provider -> error mapping (added 2026-10-27, see decisions.md)
+      args.ts                #   optional-argument normalising (added 2026-10-28, see decisions.md)
+      attachment-texts.ts    #   fetch + parse every attachment of a message (added 2026-10-28, see decisions.md)
+      result.ts              #   the two-block tool reply
     resources/               # one file per resource
     prompts/                 # one file per prompt
     transports/

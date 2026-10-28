@@ -10,7 +10,7 @@ The quickest way is Google's OAuth Playground. The token lasts about one hour.
 2. In step 1, find **Gmail API v1** and tick only `https://www.googleapis.com/auth/gmail.readonly`. Click **Authorize APIs** and sign in.
 3. In step 2, click **Exchange authorization code for tokens**. Copy the **Access token**.
 
-Only request the read-only scope. The server rejects tokens that carry write scopes (phase 2), and Google itself refuses writes with this token even if the server were bypassed.
+Only request the read-only scope. The server rejects tokens that carry write scopes before any mail call, and Google itself refuses writes with this token even if the server were bypassed.
 
 For a token that renews itself, use your own Google Cloud OAuth client instead and set the trio `GMAIL_REFRESH_TOKEN`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`. The server then mints access tokens in memory and refreshes them before they expire.
 
@@ -22,7 +22,7 @@ From the repo root:
 npx @modelcontextprotocol/inspector -e MAIL_TOKEN=<access token> npx tsx src/index.ts
 ```
 
-Open the URL it prints. Click **Connect**, then **Tools**, then **List Tools**. You should see `get_mailbox_profile` and `search_mail`. Run the first and you get your email address and message count. Then run `search_mail` with a subject word from your own inbox and you get matching messages with links. Paste one `message_id` into `get_email` to read its body. If it lists an attachment, pass the same `message_id` and the `filename` to `get_attachment_text` to read the file's text.
+Open the URL it prints. Click **Connect**, then **Tools**, then **List Tools**. You should see `get_mailbox_profile` and `search_mail`. Run the first and you get your email address and message count. Then run `search_mail` with a subject word from your own inbox and you get matching messages with links. Paste one `message_id` into `get_email` to read its body, cleaned of quoted history and signatures. Set `attachments` to `text` to get attached PDF or Word text in the same reply, or pass the `filename` to `get_attachment_text` for one file on its own.
 
 After `npm run build` the same works with the compiled file:
 

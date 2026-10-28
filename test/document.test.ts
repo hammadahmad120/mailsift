@@ -41,6 +41,22 @@ describe('toDocument', () => {
     expect(doc).not.toHaveProperty('thread_text');
   });
 
+  it('cleans the body through the section 11 pipeline', () => {
+    const quoted = {
+      ...raw,
+      body: { kind: 'text' as const, content: 'New.\n\nOn Mon, Bob wrote:\n> old' },
+    };
+    expect(toDocument(quoted, { source: 'gmail', maxChars: 1000 }).text).toBe('New.');
+  });
+
+  it('uses supplied attachments instead of the listed default', () => {
+    const filled = [
+      { ...raw.attachments[0]!, text: 'words', truncated: false, skipped_reason: null },
+    ];
+    const doc = toDocument(raw, { source: 'gmail', maxChars: 1000, attachments: filled });
+    expect(doc.attachments).toBe(filled);
+  });
+
   it('does not share arrays with the raw message', () => {
     const doc = toDocument(raw, { source: 'gmail', maxChars: 1000 });
     doc.headers.to.push('x');
