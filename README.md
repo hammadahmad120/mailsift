@@ -2,7 +2,7 @@
 
 Your mailbox, as documents your AI can actually read. Read-only MCP server that searches mail and returns clean text with attachments extracted.
 
-> Status: early. Two tools (`get_mailbox_profile`, `search_mail`) over stdio. Reading documents, attachments, and HTTP are in progress. See [docs/status.md](docs/status.md) for the phase tracker and [docs/design-brief.md](docs/design-brief.md) for the full design.
+> Status: early. Three tools (`get_mailbox_profile`, `search_mail`, `get_email`) over stdio. Bodies are still raw (no quote or signature stripping yet); text cleaning, attachments, and HTTP are in progress. See [docs/status.md](docs/status.md) for the phase tracker and [docs/design-brief.md](docs/design-brief.md) for the full design.
 
 ## Development
 
@@ -32,6 +32,7 @@ How to get a token and how to add the server to Claude Code: [examples/claude-co
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `get_mailbox_profile` | Connection test. Email address, message and thread counts, granted scopes, `read_only: true`.                                                                                                                                        |
 | `search_mail`         | Find messages by `subject`, `from`, `to`, `keywords`, `any_keywords`, `after`, `before`, `has_attachment`, `attachment_types`, `label`, `raw_query`. Metadata and links only, never bodies. Paged with `page_size` and `page_token`. |
+| `get_email`           | Read one message by `message_id` as a document: headers, body text, attachment list, link. `include_thread: true` adds the whole conversation as `thread_text`. `max_chars` caps the body (default 50000).                           |
 
 Example `search_mail` call and reply:
 

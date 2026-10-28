@@ -117,7 +117,7 @@ Goal: find messages by filters and read one message's body. No cleaning yet, no 
   - Files: `src/tools/search-mail.ts`, `test/server.test.ts`.
   - Verify: in-memory client test calls the tool with a fake provider and checks `query_used`, `items`, `next_page_token`. Manual: in Inspector, search your own mailbox by subject and see results with links.
 
-- [ ] **2.7 `get_email` tool (raw)**
+- [x] **2.7 `get_email` tool (raw)** (verified 2026-10-28)
   - Build: tool with `message_id`, `include_thread`, `max_chars`. Returns a `Document`. Attachments listed, not extracted. Body truncated at `max_chars` with `truncated: true`.
   - Files: `src/tools/get-email.ts`, `test/server.test.ts`.
   - Verify: test checks truncation flag and thread text presence. Manual: paste a `message_id` from your search into Inspector and read the body.

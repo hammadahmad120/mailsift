@@ -5,7 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CredentialResolver } from '../src/auth/credentials.js';
 import { MailError } from '../src/errors.js';
 import { loadConfig } from '../src/config.js';
-import type { MailProvider, MailboxProfile, SearchResult } from '../src/providers/types.js';
+import type {
+  Document,
+  MailProvider,
+  MailboxProfile,
+  RawMessage,
+  SearchResult,
+} from '../src/providers/types.js';
 import { createDefaultDeps, createServer, type ServerDeps } from '../src/server.js';
 
 const FAKE_TOKEN = 'ya29.test-token-must-never-leak';
@@ -76,7 +82,11 @@ describe('createServer', () => {
 
     const { tools } = await client.listTools();
 
-    expect(tools.map((t) => t.name).sort()).toEqual(['get_mailbox_profile', 'search_mail']);
+    expect(tools.map((t) => t.name).sort()).toEqual([
+      'get_email',
+      'get_mailbox_profile',
+      'search_mail',
+    ]);
     for (const tool of tools) {
       expect(tool.annotations).toMatchObject({
         readOnlyHint: true,
@@ -299,6 +309,196 @@ describe('search_mail', () => {
 
     expect(result.isError).toBe(true);
     expect(textOf(result, 0)).toMatch(/YYYY-MM-DD/);
+    expect(resolveCredentials).not.toHaveBeenCalled();
+  });
+});
+
+function rawMessage(overrides: Partial<RawMessage> = {}): RawMessage {
+  return {
+    message_id: '18f3a9c0ffee0001',
+    thread_id: '18f3a9c0ffee0100',
+    headers: {
+      date: '2026-10-14T05:30:00.000Z',
+      from: 'Alice Example <alice@example.com>',
+      to: ['me@example.com'],
+      cc: [],
+      subject: 'Plain text message',
+    },
+    link: 'https://mail.google.com/mail/u/0/#all/18f3a9c0ffee0001',
+    body: { kind: 'text', content: 'Hello,\n\nHere is the plain text body.\n' },
+    attachments: [
+      { attachment_id: 'att-1', filename: 'report.pdf', mime: 'application/pdf', size: 183221 },
+    ],
+    ...overrides,
+  };
+}
+
+describe('get_email', () => {
+  it('returns a Document with raw body, listed attachments and no thread by default', async () => {
+    const getMessage = vi.fn<MailProvider['getMessage']>(() => Promise.resolve(rawMessage()));
+    const getThread = vi.fn<MailProvider['getThread']>();
+    const client = await connect(
+      fakeDeps({ createProvider: () => fakeProvider({ getMessage, getThread }) }),
+    );
+
+    const result = await client.callTool({
+      name: 'get_email',
+      arguments: { message_id: '18f3a9c0ffee0001' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(getMessage).toHaveBeenCalledWith('18f3a9c0ffee0001');
+    expect(getThread).not.toHaveBeenCalled();
+    const doc = JSON.parse(textOf(result, 0)) as Document;
+    expect(doc).toEqual({
+      id: 'gmail:18f3a9c0ffee0001',
+      source: 'gmail',
+      kind: 'email',
+      reference: {
+        message_id: '18f3a9c0ffee0001',
+        thread_id: '18f3a9c0ffee0100',
+        link: 'https://mail.google.com/mail/u/0/#all/18f3a9c0ffee0001',
+      },
+      headers: {
+        date: '2026-10-14T05:30:00.000Z',
+        from: 'Alice Example <alice@example.com>',
+        to: ['me@example.com'],
+        cc: [],
+        subject: 'Plain text message',
+      },
+      text: 'Hello,\n\nHere is the plain text body.\n',
+      attachments: [
+        {
+          attachment_id: 'att-1',
+          filename: 'report.pdf',
+          mime: 'application/pdf',
+          size: 183221,
+          text: null,
+          truncated: false,
+          skipped_reason: null,
+        },
+      ],
+      truncated: false,
+    });
+    expect(doc).not.toHaveProperty('thread_text');
+    expect(textOf(result, 1)).toContain('Plain text message');
+    expect(textOf(result, 1)).toContain('1 attachment');
+  });
+
+  it('truncates the body at max_chars and sets the flag', async () => {
+    const long = 'x'.repeat(5000);
+    const client = await connect(
+      fakeDeps({
+        createProvider: () =>
+          fakeProvider({
+            getMessage: () =>
+              Promise.resolve(rawMessage({ body: { kind: 'text', content: long } })),
+          }),
+      }),
+    );
+
+    const result = await client.callTool({
+      name: 'get_email',
+      arguments: { message_id: '18f3a9c0ffee0001', max_chars: 100 },
+    });
+
+    const doc = JSON.parse(textOf(result, 0)) as Document;
+    expect(doc.text).toBe('x'.repeat(100));
+    expect(doc.truncated).toBe(true);
+    expect(textOf(result, 1)).toContain('truncated');
+  });
+
+  it('uses MAX_MESSAGE_CHARS as the default cap', async () => {
+    const client = await connect(
+      fakeDeps({
+        config: loadConfig({ MAX_MESSAGE_CHARS: '10' }),
+        createProvider: () =>
+          fakeProvider({
+            getMessage: () =>
+              Promise.resolve(rawMessage({ body: { kind: 'text', content: 'twelve chars' } })),
+          }),
+      }),
+    );
+    const result = await client.callTool({
+      name: 'get_email',
+      arguments: { message_id: '18f3a9c0ffee0001' },
+    });
+    const doc = JSON.parse(textOf(result, 0)) as Document;
+    expect(doc.text).toBe('twelve cha');
+    expect(doc.truncated).toBe(true);
+  });
+
+  it('adds thread_text with a separator per message when include_thread is true', async () => {
+    const first = rawMessage({
+      message_id: 'm1',
+      headers: {
+        ...rawMessage().headers,
+        date: '2026-10-13T05:30:00.000Z',
+        from: 'Bob <bob@example.com>',
+      },
+      body: { kind: 'text', content: 'First message.' },
+    });
+    const second = rawMessage({ body: { kind: 'text', content: 'Second message.' } });
+    const getThread = vi.fn<MailProvider['getThread']>(() => Promise.resolve([first, second]));
+    const client = await connect(
+      fakeDeps({
+        createProvider: () =>
+          fakeProvider({ getMessage: () => Promise.resolve(second), getThread }),
+      }),
+    );
+
+    const result = await client.callTool({
+      name: 'get_email',
+      arguments: { message_id: '18f3a9c0ffee0001', include_thread: true },
+    });
+
+    expect(getThread).toHaveBeenCalledWith('18f3a9c0ffee0100');
+    const doc = JSON.parse(textOf(result, 0)) as Document;
+    expect(doc.text).toBe('Second message.');
+    expect(doc.thread_text).toBe(
+      '--- From Bob <bob@example.com> on 2026-10-13T05:30:00.000Z ---\nFirst message.\n\n' +
+        '--- From Alice Example <alice@example.com> on 2026-10-14T05:30:00.000Z ---\nSecond message.',
+    );
+    expect(textOf(result, 1)).toContain('thread of 2');
+  });
+
+  it('keeps html bodies as html in phase 2', async () => {
+    const client = await connect(
+      fakeDeps({
+        createProvider: () =>
+          fakeProvider({
+            getMessage: () =>
+              Promise.resolve(rawMessage({ body: { kind: 'html', content: '<p>Hi</p>' } })),
+          }),
+      }),
+    );
+    const result = await client.callTool({
+      name: 'get_email',
+      arguments: { message_id: '18f3a9c0ffee0001' },
+    });
+    expect((JSON.parse(textOf(result, 0)) as Document).text).toBe('<p>Hi</p>');
+  });
+
+  it('returns NOT_FOUND as a structured error', async () => {
+    const client = await connect(
+      fakeDeps({
+        createProvider: () =>
+          fakeProvider({
+            getMessage: () =>
+              Promise.reject(new MailError('NOT_FOUND', 'Gmail resource not found.')),
+          }),
+      }),
+    );
+    const result = await client.callTool({ name: 'get_email', arguments: { message_id: 'nope' } });
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('requires message_id at the schema', async () => {
+    const resolveCredentials = vi.fn<CredentialResolver>();
+    const client = await connect(fakeDeps({ resolveCredentials }));
+    const result = await client.callTool({ name: 'get_email', arguments: {} });
+    expect(result.isError).toBe(true);
     expect(resolveCredentials).not.toHaveBeenCalled();
   });
 });
