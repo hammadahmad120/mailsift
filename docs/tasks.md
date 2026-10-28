@@ -93,13 +93,13 @@ Goal: find messages by filters and read one message's body. No cleaning yet, no 
   - Files: `src/auth/scope-check.ts`, `test/scope-check.test.ts`.
   - Verify: tests with mocked `fetch`: read-only scope passes, `gmail.modify` fails, second call within TTL does not hit `fetch`, cache key is not the raw token.
 
-- [ ] **2.3 Locked client: full allow-list and retries**
+- [x] **2.3 Locked client: full allow-list and retries** (verified 2026-10-28)
   - Build: extend the allow-list to `messages` (list), `messages/{id}`, `threads/{id}`, `messages/{id}/attachments/{attachmentId}`. Add retry with backoff for `429` and `5xx`, max 3 tries, respecting `Retry-After`.
   - Why: brief section 8.4 and 17. Retries live in the client so every caller gets them.
   - Files: `src/providers/gmail/client.ts`, `test/gmail-client.test.ts`.
   - Verify: tests show a path like `messages/abc/modify` is still refused, a `503` then `200` sequence succeeds on the second try, three `429`s end as `RATE_LIMITED`.
 
-- [ ] **2.4 MIME helpers**
+- [x] **2.4 MIME helpers** (verified 2026-10-28)
   - Build: functions that walk a Gmail message payload: find the best body part (`text/plain` preferred, else `text/html`), decode base64url, read headers (`From`, `To`, `Cc`, `Subject`, `Date`) into the `Document.headers` shape, and list attachment parts (filename, mime, size, attachment id).
   - Why: Gmail returns a nested MIME tree. These pure functions flatten it so the provider stays small.
   - Files: `src/providers/gmail/mime.ts`, `test/fixtures/gmail/message-plain.json`, `message-html-only.json`, `message-with-attachments.json`, `test/mime.test.ts`.

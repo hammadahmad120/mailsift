@@ -1,0 +1,53 @@
+{
+  "id": "18f3a9c0ffee0001",
+  "threadId": "18f3a9c0ffee0001",
+  "labelIds": [
+    "INBOX"
+  ],
+  "snippet": "Hello, Here is the plain text body.",
+  "internalDate": "1791955800000",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "me@example.com"
+      },
+      {
+        "name": "Date",
+        "value": "Tue, 14 Oct 2026 09:30:00 +0400"
+      },
+      {
+        "name": "From",
+        "value": "Alice Example <alice@example.com>"
+      },
+      {
+        "name": "To",
+        "value": "\"Doe, Jane\" <jane@example.com>, me@example.com"
+      },
+      {
+        "name": "Cc",
+        "value": "Bob <bob@example.com>"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<msg-1@example.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "Plain text message"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 52,
+      "data": "SGVsbG8sCgpIZXJlIGlzIHRoZSBwbGFpbiB0ZXh0IGJvZHkuCgpUaGFua3MsCkFsaWNlCg"
+    }
+  },
+  "sizeEstimate": 1024
+}

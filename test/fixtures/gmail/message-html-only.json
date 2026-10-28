@@ -1,0 +1,53 @@
+{
+  "id": "18f3a9c0ffee0002",
+  "threadId": "18f3a9c0ffee0002",
+  "labelIds": [
+    "INBOX"
+  ],
+  "snippet": "Hello, Here is the HTML body.",
+  "internalDate": "1791955800000",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/html",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "me@example.com"
+      },
+      {
+        "name": "Date",
+        "value": "Tue, 14 Oct 2026 09:30:00 +0400"
+      },
+      {
+        "name": "From",
+        "value": "Alice Example <alice@example.com>"
+      },
+      {
+        "name": "To",
+        "value": "\"Doe, Jane\" <jane@example.com>, me@example.com"
+      },
+      {
+        "name": "Cc",
+        "value": "Bob <bob@example.com>"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<msg-1@example.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "HTML only message"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/html; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 107,
+      "data": "PGh0bWw-PGJvZHk-PHA-SGVsbG8sPC9wPjxwPkhlcmUgaXMgdGhlIDxiPkhUTUw8L2I-IGJvZHkuPC9wPjxpbWcgc3JjPSJjaWQ6bG9nb0BleGFtcGxlLmNvbSI-PC9ib2R5PjwvaHRtbD4"
+    }
+  },
+  "sizeEstimate": 2048
+}
