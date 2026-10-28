@@ -197,6 +197,12 @@ Fetch messages concurrently with a small limit (default 5) and a short pause on 
 
 Input: none. Output: `{ "email_address", "messages_total", "threads_total", "provider": "gmail", "scopes": [...], "read_only": true }`. This is the "connection test" tool.
 
+### 8.6 `get_attachment_file` (added 2026-10-28, see decisions.md)
+
+Input: `message_id`, `attachment_id` or `filename` (one required; filename preferred, ids change between reads).
+
+Output: `{ "attachment_id", "filename", "mime", "size" }` plus an MCP binary content block carrying the original bytes as base64 with their mime type. No parsing, no text. Over `MAX_ATTACHMENT_BYTES` is `ATTACHMENT_UNSUPPORTED` and no bytes are sent.
+
 ## 9. Document shape (the only output shape for mail content)
 
 ```
@@ -295,7 +301,7 @@ Everything in this section is pure functions with fixture-based unit tests.
 1. Scaffold. Repo layout (section 14), TypeScript, eslint, vitest, `McpServer` with `get_mailbox_profile` only, stdio transport, env credentials. Manual check with MCP Inspector and a real token from Google OAuth Playground.
 2. Gmail adapter + `search_mail` + `get_email` (bodies only). Locked client with allow-list. Scope check. Error model. Recorded-response fixtures for tests.
 3. Text cleaning and attachments. `get_attachment_text`. All of section 11 with fixtures (sample HTML bodies, quoted replies, a PDF, a DOCX).
-4. `collect_mail` with concurrency, retries, caps, `skipped` and `stats`.
+4. `collect_mail` with concurrency, retries, caps, `skipped` and `stats`. `get_attachment_file` for the original bytes (added 2026-10-28, see decisions.md).
 5. HTTP transport with server keys and header credentials. Health route. Redacted logging and the no-token-in-logs test. Dockerfile.
 6. Resources and prompts. README with three examples (resumes against a job description, high priority complaints in the last week, invoices from one supplier this quarter). npm publish setup.
 7. Later, only when asked: IMAP adapter with app password (fetch with `BODY.PEEK`, never marks read), Microsoft 365 adapter, stored-account mode with OAuth login for Claude.ai direct connection, spreadsheet attachments, OCR.

@@ -196,7 +196,13 @@ Goal: one call that returns a whole pile of documents under hard caps.
   - Open question (raised 2026-10-23, decide when this task starts): message order when the cap truncates. Gmail lists newest first, which drops the oldest messages from a queue. Proposal: `order: "oldest_first" | "newest_first"` field, walk list ids to the end, reverse, take `max_messages`, plus a `MAX_SEARCH_IDS` config cap. `search_mail` keeps Gmail order.
   - Verify: test with a fake provider of 30 messages and `max_total_chars` small enough to cut off at 10 checks `stats.truncated: true` and `messages_returned: 10`. Manual: collect last month's mail with attachments in Inspector, read the stats block.
 
-- [ ] **4.3 Phase 4 docs sync**
+- [ ] **4.3 `get_attachment_file` tool** (added 2026-10-28, see decisions.md)
+  - Build: `src/tools/get-attachment-file.ts` taking `message_id` plus `filename` or `attachment_id`, same resolution as `get_attachment_text` (fresh read, id match, else filename, else the only one). Returns the original bytes unchanged: a JSON block `{ attachment_id, filename, mime, size }` plus an MCP binary content block (`type: "resource"`, `blob` as base64, `mimeType`). Over `MAX_ATTACHMENT_BYTES` is `ATTACHMENT_UNSUPPORTED` as a structured error, no bytes sent. No parsing.
+  - Why: an app that stores documents wants the file as sent, not the extracted text. The server already has the bytes; handing them over keeps Gmail knowledge and the attachment-id churn out of the app.
+  - Files: `src/tools/get-attachment-file.ts`, `test/server.test.ts`.
+  - Verify: test decodes the blob and gets the sample PDF byte for byte; an oversized attachment is refused; the every-tool scope tests include it. Manual: fetch a real PDF in Inspector, decode the base64, open the file.
+
+- [ ] **4.4 Phase 4 docs sync**
 
 ---
 

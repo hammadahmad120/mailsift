@@ -12,7 +12,7 @@ The phase-by-phase task breakdown with a verify step per task is in [tasks.md](t
 | 1     | Scaffold: `McpServer` with `get_mailbox_profile` only, stdio transport, env credentials                             | **Done** (2026-10-27) | MCP Inspector lists one tool and calls it with a real read-only token |
 | 2     | Gmail adapter, `search_mail`, `get_email` (bodies only), locked client, scope check, error model, recorded fixtures | **Done** (2026-10-28) | Tests pass against recorded JSON, manual search works in Inspector    |
 | 3     | Text cleaning and attachments, `get_attachment_text`, all of section 11 with fixtures                               | Not started           | Cleaning and parser tests green on HTML, quoted replies, PDF, DOCX    |
-| 4     | `collect_mail` with concurrency, retries, caps, `skipped` and `stats`                                               | Not started           | Bundle call returns documents and stats under the caps                |
+| 4     | `collect_mail` with concurrency, retries, caps, `skipped` and `stats`; `get_attachment_file` for original bytes     | Not started           | Bundle call returns documents and stats under the caps                |
 | 5     | HTTP transport, server keys, header credentials, `/healthz`, redacted logging, no-token-in-logs test, Dockerfile    | Not started           | curl with the two headers works, logging test green, image builds     |
 | 6     | Resources, prompts, README with three examples, npm publish setup                                                   | Not started           | Inspector shows resources and prompts, `npm pack` is clean            |
 | 7     | Later, only when asked: IMAP, Microsoft 365, stored-account mode, spreadsheets, OCR                                 | Blocked by design     | Explicit request                                                      |
@@ -58,4 +58,4 @@ The phase-by-phase task breakdown with a verify step per task is in [tasks.md](t
 
 ## Next step
 
-Phase 4 starts with task 4.1 in [tasks.md](tasks.md), the concurrency limiter: a dependency-free `pLimit(n)` in `src/util/concurrency.ts` with a test proving at most `n` tasks run at once. Then 4.2 `collect_mail` (decide the message-order open question when it starts) and 4.3 docs sync.
+Phase 4 starts with task 4.1 in [tasks.md](tasks.md), the concurrency limiter: a dependency-free `pLimit(n)` in `src/util/concurrency.ts` with a test proving at most `n` tasks run at once. Then 4.2 `collect_mail` (decide the message-order open question when it starts), 4.3 `get_attachment_file` (original bytes for apps that store files), and 4.4 docs sync.
