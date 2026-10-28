@@ -1,0 +1,18 @@
+{
+  "messages": [
+    {
+      "id": "18f3a9c0ffee0001",
+      "threadId": "18f3a9c0ffee0001"
+    },
+    {
+      "id": "18f3a9c0ffee0002",
+      "threadId": "18f3a9c0ffee0002"
+    },
+    {
+      "id": "18f3a9c0ffee0003",
+      "threadId": "18f3a9c0ffee0003"
+    }
+  ],
+  "nextPageToken": "09876543210987654321",
+  "resultSizeEstimate": 43
+}

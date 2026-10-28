@@ -105,7 +105,7 @@ Goal: find messages by filters and read one message's body. No cleaning yet, no 
   - Files: `src/providers/gmail/mime.ts`, `test/fixtures/gmail/message-plain.json`, `message-html-only.json`, `message-with-attachments.json`, `test/mime.test.ts`.
   - Verify: one test per fixture: plain body picked, html picked when no plain, two attachments listed with correct sizes, inline images excluded.
 
-- [ ] **2.5 Gmail provider: search, getMessage, getThread**
+- [x] **2.5 Gmail provider: search, getMessage, getThread** (verified 2026-10-28)
   - Build: `search(filters, pageSize, pageToken)` which lists ids then fetches metadata for each, `getMessage(id)` returning a raw `Document` (body text still uncleaned), `getThread(id)` returning messages in date order.
   - Why: completes the adapter for everything except attachments.
   - Files: `src/providers/gmail/provider.ts`, `test/fixtures/gmail/list.json`, `thread.json`, `test/gmail-provider.test.ts`.

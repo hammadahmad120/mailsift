@@ -35,6 +35,7 @@ export function createDefaultDeps(env: NodeJS.ProcessEnv = process.env): ServerD
           token: credentials.token,
           timeoutMs: config.limits.gmailTimeoutMs,
         }),
+        maxRangeDays: config.limits.maxRangeDays,
       }),
   };
 }
