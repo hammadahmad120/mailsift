@@ -333,6 +333,7 @@ mailsift/
         query-builder.ts     # filter fields -> Gmail q string
         mime.ts              # part walking, base64url decode
     parse/
+      document.ts            # RawMessage -> Document (section 9), pure (added 2026-10-28, see decisions.md)
       html-to-text.ts
       quotes.ts              # quoted reply + signature stripping
       thread.ts              # flattening

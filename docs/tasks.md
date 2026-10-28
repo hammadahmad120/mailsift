@@ -128,7 +128,7 @@ Goal: find messages by filters and read one message's body. No cleaning yet, no 
   - Files: `src/tools/with-mailbox.ts`, `test/server.test.ts`.
   - Verify: tests show that with no token every tool returns `AUTH_MISSING_TOKEN`, and with a broad scope every tool returns `AUTH_SCOPE_TOO_BROAD`.
 
-- [ ] **2.9 Phase 2 docs sync**
+- [x] **2.9 Phase 2 docs sync** (verified 2026-10-28)
   - Verify: `npm run check` green, status updated, Inspector manual check done for search and get.
 
 ---
