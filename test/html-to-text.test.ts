@@ -65,6 +65,13 @@ describe('htmlToText', () => {
     expect(text).not.toMatch(/\n{3,}/);
   });
 
+  it('drops the Gmail signature block', () => {
+    const html =
+      '<div dir="ltr">See you Monday.</div><div><br></div>' +
+      '<div class="gmail_signature" dir="ltr"><div>Alice Example</div><div>Head of Ops</div></div>';
+    expect(htmlToText(html)).toBe('See you Monday.');
+  });
+
   it('does not wrap long lines', () => {
     const long = 'word '.repeat(60).trim();
     expect(htmlToText(`<p>${long}</p>`)).toBe(long);

@@ -1,5 +1,8 @@
 /**
- * Quoted-reply stripping (brief section 11). Pure, plain text in and out.
+ * Body cleaning (brief section 11): quoted-reply stripping, signature
+ * stripping, whitespace. Pure, plain text in and out. `cleanBody` composes them.
+ *
+ * --- Quotes ---
  *
  * Three markers are recognised; everything from the first one found to the
  * end of the text is removed, because mail clients always put the quoted
@@ -15,6 +18,15 @@
  * is usually the point of the message.
  *
  * Guard: if stripping would leave nothing, the original text is returned.
+ *
+ * --- Signatures ---
+ *
+ * Two markers: the exact `-- ` delimiter line (dash, dash, space) and a
+ * sign-off phrase on its own line ("Regards", "Thanks", "Sent from my ...").
+ * Both only count near the end: at most MAX_SIGNATURE_LINES may follow.
+ * The signature is kept when the remaining text would be under
+ * MIN_BODY_AFTER_SIGNATURE characters (brief: 200).
+ * Gmail's HTML `.gmail_signature` block is removed by `htmlToText`.
  */
 
 /** "On ..., X wrote:" and common localised forms, possibly with a trailing space. */
@@ -88,4 +100,63 @@ export function stripQuotes(text: string): string {
 
   const result = kept.join('\n').trim();
   return result === '' ? original.trim() : result;
+}
+
+// ---------------------------------------------------------------------------
+// Signatures
+// ---------------------------------------------------------------------------
+
+/** Below this many remaining characters the signature is kept (brief section 11). */
+export const MIN_BODY_AFTER_SIGNATURE = 200;
+/** A marker only counts if no more than this many lines follow it. */
+export const MAX_SIGNATURE_LINES = 15;
+
+/** The Usenet delimiter: exactly dash, dash, space. Never trimmed before matching. */
+const SIG_DELIMITER = /^-- $/;
+
+const SIGN_OFF =
+  /^(thanks|thank you|many thanks|thanks again|thanks in advance|regards|best regards|kind regards|warm regards|warmest regards|best|all the best|best wishes|cheers|sincerely|yours sincerely|yours truly|yours faithfully|take care|talk soon|speak soon|sent from my .+|sent from outlook.*|get outlook for .+)[,.!]?\s*$/i;
+
+/** Index of the line where the signature starts, or -1. */
+export function findSignatureStart(lines: readonly string[]): number {
+  const lastIndex = lines.length - 1;
+  const earliest = Math.max(0, lines.length - MAX_SIGNATURE_LINES - 1);
+
+  for (let i = earliest; i <= lastIndex; i++) {
+    if (SIG_DELIMITER.test(lines[i] as string)) return i;
+  }
+  for (let i = earliest; i <= lastIndex; i++) {
+    if (SIGN_OFF.test((lines[i] as string).trim())) return i;
+  }
+  return -1;
+}
+
+export function stripSignature(text: string): string {
+  const original = text.replace(/\r\n?/g, '\n').replace(/\s+$/, '');
+  const lines = original.split('\n');
+
+  const start = findSignatureStart(lines);
+  if (start === -1) return original.trim();
+
+  const kept = lines.slice(0, start).join('\n').trim();
+  return kept.length < MIN_BODY_AFTER_SIGNATURE ? original.trim() : kept;
+}
+
+// ---------------------------------------------------------------------------
+// Whitespace and composition
+// ---------------------------------------------------------------------------
+
+/** CRLF to LF, no-break spaces to spaces, no trailing spaces, at most one blank line, trimmed. */
+export function normalizeWhitespace(text: string): string {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** The whole plain-text pipeline: quotes, then signature, then whitespace. */
+export function cleanBody(text: string): string {
+  return normalizeWhitespace(stripSignature(stripQuotes(text)));
 }

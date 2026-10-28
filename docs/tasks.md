@@ -147,7 +147,7 @@ Goal: bodies come out clean, attachments come out as text, `get_attachment_text`
   - Files: `src/parse/quotes.ts`, `test/fixtures/bodies/*.txt`, `test/quotes.test.ts`.
   - Verify: each pattern has a fixture pair (input, expected).
 
-- [ ] **3.3 Signature stripping and whitespace**
+- [x] **3.3 Signature stripping and whitespace** (verified 2026-10-28)
   - Build: `stripSignature(text)` for `-- ` and common sign-offs, keeping it when the remainder is under 200 chars. `normalizeWhitespace(text)` collapsing more than two blank lines and trimming. `cleanBody(text)` composing all of it.
   - Files: `src/parse/quotes.ts`, `test/quotes.test.ts`.
   - Verify: tests for the 200-char rule in both directions.

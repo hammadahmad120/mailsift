@@ -5,8 +5,9 @@ import type { HtmlToTextOptions } from 'html-to-text';
  * HTML body -> plain text (brief section 11): no images, links kept as
  * `text (url)`, tables flattened, headings as written, no line wrapping. Pure.
  *
- * Gmail wraps the quoted previous message in `.gmail_quote`; it is dropped
- * here because the HTML element is the only reliable marker. Plain-text
+ * Gmail wraps the quoted previous message in `.gmail_quote` and the sender's
+ * signature in `.gmail_signature`; both are dropped here because the HTML
+ * element is the only reliable marker. Plain-text
  * quote markers (`>` lines, "On ... wrote:") are handled by `quotes.ts`.
  */
 
@@ -31,6 +32,7 @@ const OPTIONS: HtmlToTextOptions = {
       options: { colSpacing: 2, uppercaseHeaderCells: false, maxColumnWidth: 100_000 },
     },
     { selector: '.gmail_quote', format: 'skip' },
+    { selector: '.gmail_signature', format: 'skip' },
   ],
 };
 

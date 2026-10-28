@@ -1,6 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { findQuoteStart, stripQuotes } from '../src/parse/quotes.js';
+import {
+  MAX_SIGNATURE_LINES,
+  MIN_BODY_AFTER_SIGNATURE,
+  cleanBody,
+  findQuoteStart,
+  findSignatureStart,
+  normalizeWhitespace,
+  stripQuotes,
+  stripSignature,
+} from '../src/parse/quotes.js';
 
 function fixture(name: string): string {
   return readFileSync(new URL(`./fixtures/bodies/${name}.txt`, import.meta.url), 'utf8');
@@ -70,5 +79,87 @@ describe('stripQuotes rules', () => {
 
   it('normalises CRLF line endings', () => {
     expect(stripQuotes('New text.\r\n\r\nOn Mon, Bob wrote:\r\n> old')).toBe('New text.');
+  });
+});
+
+/** A body comfortably over the 200-char guard. */
+const LONG_BODY =
+  'Hi team,\n\n' +
+  'Following up on the review: the migration finished overnight without errors, ' +
+  'the dashboards are back, and the on-call rota is unchanged for this week. ' +
+  'Please check your own services once more before the Thursday freeze.\n\n' +
+  'One open item is the backup verification, which I will run on Wednesday.';
+
+describe('stripSignature', () => {
+  it('removes everything below the exact "-- " delimiter', () => {
+    const text = `${LONG_BODY}\n\n-- \nAlice Example\nHead of Ops\n+971 50 000 0000`;
+    expect(stripSignature(text)).toBe(LONG_BODY);
+  });
+
+  it('ignores "--" without the trailing space, "---" dividers, and dashes mid-sentence', () => {
+    const text = `${LONG_BODY}\n\n--\nnot a delimiter\n---\nalso not -- fine`;
+    expect(stripSignature(text)).toBe(text);
+  });
+
+  it('removes a sign-off line and what follows', () => {
+    for (const signOff of ['Thanks,', 'Kind regards', 'Best', 'Cheers!', 'Sent from my iPhone']) {
+      const text = `${LONG_BODY}\n\n${signOff}\nAlice\nExample Co`;
+      expect(stripSignature(text), signOff).toBe(LONG_BODY);
+    }
+  });
+
+  it('keeps the signature when the remainder would be under 200 chars', () => {
+    const short = 'Thanks for the update, see you Monday.\n\nRegards,\nAlice';
+    expect(stripSignature(short)).toBe(short);
+    expect(short.indexOf('Regards')).toBeLessThan(MIN_BODY_AFTER_SIGNATURE);
+  });
+
+  it('strips once the remainder reaches 200 chars', () => {
+    const body = 'x'.repeat(MIN_BODY_AFTER_SIGNATURE);
+    expect(stripSignature(`${body}\n\nRegards,\nAlice`)).toBe(body);
+    const justUnder = 'x'.repeat(MIN_BODY_AFTER_SIGNATURE - 1);
+    expect(stripSignature(`${justUnder}\n\nRegards,\nAlice`)).toBe(
+      `${justUnder}\n\nRegards,\nAlice`,
+    );
+  });
+
+  it('does not treat a sign-off word inside a sentence as a marker', () => {
+    const text = `${LONG_BODY}\n\nThanks for checking the rota, and best of luck with the freeze.\n\nOne more paragraph of real content follows here.`;
+    expect(stripSignature(text)).toBe(text);
+  });
+
+  it('ignores a "-- " line followed by more than the signature limit of lines', () => {
+    const tail = Array.from({ length: MAX_SIGNATURE_LINES + 1 }, (_, i) => `line ${i}`).join('\n');
+    const text = `${LONG_BODY}\n\n-- \n${tail}`;
+    expect(stripSignature(text)).toBe(text);
+    expect(findSignatureStart(text.split('\n'))).toBe(-1);
+  });
+
+  it('cuts at the earliest marker in the tail so "Thanks" plus "Sent from my iPhone" both go', () => {
+    const text = `${LONG_BODY}\n\nThanks,\nAlice\n\nSent from my iPhone`;
+    expect(stripSignature(text)).toBe(LONG_BODY);
+  });
+
+  it('leaves text with no signature untouched apart from trimming', () => {
+    expect(stripSignature(`${LONG_BODY}\n\n`)).toBe(LONG_BODY);
+  });
+});
+
+describe('normalizeWhitespace', () => {
+  it('collapses blank-line runs, strips trailing spaces, converts CRLF and nbsp, trims', () => {
+    const text = '  a  \r\n\r\n\r\n\r\nb\u00a0c\t\n\n\n';
+    expect(normalizeWhitespace(text)).toBe('a\n\nb c');
+  });
+});
+
+describe('cleanBody', () => {
+  it('runs quotes, then signature, then whitespace', () => {
+    const text = `${LONG_BODY}\n\n\n\nRegards,\nAlice\n\nOn Mon, 13 Oct 2026, Bob wrote:\n> old\n> text`;
+    expect(cleanBody(text)).toBe(LONG_BODY);
+  });
+
+  it('keeps a short message whole even with a sign-off and a quote', () => {
+    const text = 'Yes, Monday works.\n\nThanks,\nAlice\n\nOn Mon, Bob wrote:\n> Monday?';
+    expect(cleanBody(text)).toBe('Yes, Monday works.\n\nThanks,\nAlice');
   });
 });
