@@ -137,7 +137,7 @@ Goal: find messages by filters and read one message's body. No cleaning yet, no 
 
 Goal: bodies come out clean, attachments come out as text, `get_attachment_text` works.
 
-- [ ] **3.1 HTML to text**
+- [x] **3.1 HTML to text** (verified 2026-10-28)
   - Build: `htmlToText(html)` wrapping `html-to-text` with the brief's settings: no images, links as `text (url)`, tables flattened.
   - Files: `src/parse/html-to-text.ts`, `test/fixtures/bodies/*.html`, `test/html-to-text.test.ts`.
   - Verify: fixture tests, including a Gmail-style HTML reply and a newsletter.
