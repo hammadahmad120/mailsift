@@ -81,7 +81,7 @@ Goal: a real MCP server with one tool, `get_mailbox_profile`, that you can call 
 
 Goal: find messages by filters and read one message's body. No cleaning yet, no attachments text yet.
 
-- [ ] **2.1 Query builder**
+- [x] **2.1 Query builder** (verified 2026-10-28)
   - Build: `buildQuery(filters)` turning `SearchFilters` into a Gmail `q` string. Quoting and escaping of values, `after:`/`before:` in `YYYY/MM/DD`, `keywords` joined with AND, `any_keywords` as `{a b c}`, `attachment_types` to `filename:` ORs, `raw_query` appended, always `-in:spam -in:trash`. Throws `QUERY_EMPTY` with no filter and `RANGE_TOO_WIDE` when the date span exceeds `MAX_RANGE_DAYS`.
   - Why: pure function, no network, and the single place Gmail search syntax is known. Everything a model types ends up here.
   - Files: `src/providers/gmail/query-builder.ts`, `test/query-builder.test.ts`.
