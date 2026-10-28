@@ -142,7 +142,7 @@ Goal: bodies come out clean, attachments come out as text, `get_attachment_text`
   - Files: `src/parse/html-to-text.ts`, `test/fixtures/bodies/*.html`, `test/html-to-text.test.ts`.
   - Verify: fixture tests, including a Gmail-style HTML reply and a newsletter.
 
-- [ ] **3.2 Quoted reply stripping**
+- [x] **3.2 Quoted reply stripping** (verified 2026-10-28)
   - Build: `stripQuotes(text)` removing `>` lines, blocks after `On <date>, <name> wrote:`, Outlook `From: … Sent: …` blocks, and the `gmail_quote` div (handled at the HTML stage).
   - Files: `src/parse/quotes.ts`, `test/fixtures/bodies/*.txt`, `test/quotes.test.ts`.
   - Verify: each pattern has a fixture pair (input, expected).

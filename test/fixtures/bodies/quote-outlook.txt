@@ -1,0 +1,16 @@
+Approved. Please proceed with the order.
+
+Regards,
+Carol
+
+From: Dave Example <dave@example.com>
+Sent: Monday, 13 October 2026 16:05
+To: Carol Example <carol@example.com>
+Cc: Procurement <procurement@example.com>
+Subject: RE: Purchase order 4471
+
+Hi Carol,
+
+Can you approve PO 4471 today? The supplier needs it by Wednesday.
+
+Dave

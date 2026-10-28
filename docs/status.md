@@ -33,15 +33,16 @@ The phase-by-phase task breakdown with a verify step per task is in [tasks.md](t
 - `src/tools/search-mail.ts` is done: zod input mirroring brief 8.1 plus paging, `page_size` clamped to `MAX_PAGE_SIZE`, handler = `withMailbox` -> `search` -> `toolResult`. Verified in Inspector against a real mailbox.
 - `src/tools/get-email.ts` is done: `message_id`, `include_thread`, `max_chars`; handler = `withMailbox` -> `getMessage` (+ `getThread`) -> `toDocument`. Bodies raw until phase 3. Verified in Inspector.
 - `src/parse/html-to-text.ts` is done: pure `htmlToText(html)` over `html-to-text`: no wrap, links as `text (url)`, images/style/script skipped, tables as aligned columns, `.gmail_quote` dropped, blank-line runs collapsed. Fixtures in `test/fixtures/bodies/`. Not wired until task 3.8.
+- `src/parse/quotes.ts` is done: pure `stripQuotes(text)`: cuts from the first `On ... wrote:` line (also wrapped and fr/de/es/nl forms), Outlook `From/Sent/To/Subject` block or `-----Original Message-----` to the end, removes `>` lines, protects forwards, keeps the original if nothing would remain. Fixture pairs in `test/fixtures/bodies/quote-*.txt`. Not wired until task 3.8.
 - `src/parse/document.ts` is done: pure `toDocument(raw, { source, maxChars, thread? })` building the brief section 9 shape, plus `truncate`, `rawBodyText`, `rawThreadText`. Phase 3 swaps the last two for the cleaning pipeline and `flattenThread`.
 - `src/tools/get-mailbox-profile.ts` is done: empty zod input, read-only annotations, handler = `withMailbox` -> `getProfile` -> `toolResult`; now reports the scopes Google granted. `src/tools/result.ts` holds `toolResult(data, summary)`, the two-block reply every tool uses.
 - `src/transports/stdio.ts` is done: `runStdio(server, streams)` connects the server to `StdioServerTransport`; streams are injectable for tests.
 - `src/index.ts` is the real CLI entry: `main(argv, options)` returns an exit code, `--stdio` is the default, `--http` exits 1 with a "phase 5" message, config errors exit 1 with the zod message, logs go to stderr only. The direct-run guard compares `import.meta.url` with the resolved `process.argv[1]`, so importing the module in tests never starts a server.
 - `examples/claude-code.md` explains getting a read-only token from OAuth Playground, running under MCP Inspector, and the Claude Code `.mcp.json` snippet with `${MAIL_TOKEN}` expansion.
 - Empty so far (`.gitkeep` only): `src/resources/`, `src/prompts/`, `src/parse/attachments/`.
-- Tests: 171 passing across `config`, `errors`, `credentials`, `scope-check`, `gmail-client`, `gmail-provider`, `query-builder`, `mime`, `document`, `html-to-text`, `server` (real MCP `Client` over the SDK in-memory transport), `stdio` (real `StdioServerTransport` driven through in-memory streams), plus the toolchain smoke test. All offline. Recorded fixtures live in `test/fixtures/gmail/`.
+- Tests: 185 passing across `config`, `errors`, `credentials`, `scope-check`, `gmail-client`, `gmail-provider`, `query-builder`, `mime`, `document`, `html-to-text`, `quotes`, `server` (real MCP `Client` over the SDK in-memory transport), `stdio` (real `StdioServerTransport` driven through in-memory streams), plus the toolchain smoke test. All offline. Recorded fixtures live in `test/fixtures/gmail/`.
 - Phases 1 and 2 are complete: every task verified, including the manual Inspector checks (profile with scopes, search by subject with links, get_email by id).
-- Not built yet (phase 3+): quote and signature stripping, thread flattening, attachment parsers, `getAttachment`, `get_attachment_text`, collect, HTTP transport, resources, prompts.
+- Not built yet (phase 3+): signature stripping and whitespace, thread flattening, attachment parsers, `getAttachment`, `get_attachment_text`, collect, HTTP transport, resources, prompts.
 
 ## Known issues
 
@@ -49,4 +50,4 @@ The phase-by-phase task breakdown with a verify step per task is in [tasks.md](t
 
 ## Next step
 
-Task 3.2 in [tasks.md](tasks.md), quoted reply stripping: `stripQuotes(text)` in `src/parse/quotes.ts`, removing `>` lines, everything after an `On <date>, <name> wrote:` line, and Outlook `From: ... Sent: ...` header blocks, with plain-text fixtures. Then 3.3 signatures and whitespace, 3.4 thread flattening, 3.5 to 3.7 attachments, 3.8 wiring into `get_email`, 3.9 docs sync.
+Task 3.3 in [tasks.md](tasks.md), signature stripping and whitespace: `stripSignature(text)` removing text after a `-- ` line or a common sign-off unless the remainder would be under 200 chars, and `normalizeWhitespace(text)` collapsing more than two blank lines and trimming. Then 3.4 thread flattening, 3.5 to 3.7 attachments, 3.8 wiring into `get_email`, 3.9 docs sync.
