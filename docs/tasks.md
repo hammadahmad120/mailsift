@@ -157,7 +157,7 @@ Goal: bodies come out clean, attachments come out as text, `get_attachment_text`
   - Files: `src/parse/thread.ts`, `test/thread.test.ts`.
   - Verify: test with three messages out of order checks ordering and separators.
 
-- [ ] **3.5 Attachment parsers**
+- [x] **3.5 Attachment parsers** (verified 2026-10-28)
   - Build: `parseAttachment({ mime, filename, bytes })` dispatching to `text.ts` (txt, md, csv, html), `pdf.ts` (unpdf, reports `pages`, `NO_TEXT_LAYER` for scans), `docx.ts` (mammoth raw text). Size cap, unsupported types and parse failures return `{ skipped_reason }` and never throw.
   - Why: pure functions, every failure is a value, so one bad file never breaks a 50-message collect.
   - Files: `src/parse/attachments/{index,text,pdf,docx}.ts`, `test/fixtures/attachments/sample.pdf`, `sample.docx`, `scanned.pdf`, `sample.csv`, `test/attachments.test.ts`.

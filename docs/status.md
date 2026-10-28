@@ -35,15 +35,16 @@ The phase-by-phase task breakdown with a verify step per task is in [tasks.md](t
 - `src/parse/html-to-text.ts` is done: pure `htmlToText(html)` over `html-to-text`: no wrap, links as `text (url)`, images/style/script skipped, tables as aligned columns, `.gmail_quote` and `.gmail_signature` dropped, blank-line runs collapsed. Fixtures in `test/fixtures/bodies/`. Not wired until task 3.8.
 - `src/parse/quotes.ts` is done: the plain-text cleaning step. `stripQuotes` (cuts from the first `On ... wrote:` line, Outlook header block or `-----Original Message-----`, removes `>` lines, protects forwards), `stripSignature` (`-- ` delimiter or sign-off phrase within the last 15 lines, kept when under 200 chars remain), `normalizeWhitespace`, and `cleanBody` composing all three. Fixture pairs in `test/fixtures/bodies/quote-*.txt`. Not wired until task 3.8.
 - `src/parse/thread.ts` is done: `flattenThread(messages)` (oldest first, `--- From <from> on <date> ---` per message, each body cleaned) and `bodyToText(raw)` (HTML via `htmlToText`, then `cleanBody`). Verified in Inspector on a real thread.
+- `src/parse/attachments/` is done: `parseAttachment({ mime, filename, bytes }, { maxBytes })` dispatching to `pdf.ts` (unpdf, silent, page count, `NO_TEXT_LAYER`), `docx.ts` (mammoth raw text), `text.ts` (txt, md, csv, html). Never throws: `ATTACHMENT_UNSUPPORTED` or `PARSE_FAILED` as values. Generated fixtures in `test/fixtures/attachments/`. Not wired until 3.7 and 3.8.
 - `src/parse/document.ts` is done: pure `toDocument(raw, { source, maxChars, thread? })` building the brief section 9 shape, plus `truncate` and `rawBodyText`. `thread_text` is already clean via `flattenThread`; task 3.8 swaps `rawBodyText` for `bodyToText`.
 - `src/tools/get-mailbox-profile.ts` is done: empty zod input, read-only annotations, handler = `withMailbox` -> `getProfile` -> `toolResult`; now reports the scopes Google granted. `src/tools/result.ts` holds `toolResult(data, summary)`, the two-block reply every tool uses.
 - `src/transports/stdio.ts` is done: `runStdio(server, streams)` connects the server to `StdioServerTransport`; streams are injectable for tests.
 - `src/index.ts` is the real CLI entry: `main(argv, options)` returns an exit code, `--stdio` is the default, `--http` exits 1 with a "phase 5" message, config errors exit 1 with the zod message, logs go to stderr only. The direct-run guard compares `import.meta.url` with the resolved `process.argv[1]`, so importing the module in tests never starts a server.
 - `examples/claude-code.md` explains getting a read-only token from OAuth Playground, running under MCP Inspector, and the Claude Code `.mcp.json` snippet with `${MAIL_TOKEN}` expansion.
-- Empty so far (`.gitkeep` only): `src/resources/`, `src/prompts/`, `src/parse/attachments/`.
-- Tests: 203 passing across `config`, `errors`, `credentials`, `scope-check`, `gmail-client`, `gmail-provider`, `query-builder`, `mime`, `document`, `html-to-text`, `quotes`, `thread`, `server` (real MCP `Client` over the SDK in-memory transport), `stdio` (real `StdioServerTransport` driven through in-memory streams), plus the toolchain smoke test. All offline. Recorded fixtures live in `test/fixtures/gmail/`.
+- Empty so far (`.gitkeep` only): `src/resources/`, `src/prompts/`.
+- Tests: 213 passing across `config`, `errors`, `credentials`, `scope-check`, `gmail-client`, `gmail-provider`, `query-builder`, `mime`, `document`, `html-to-text`, `quotes`, `thread`, `attachments`, `server` (real MCP `Client` over the SDK in-memory transport), `stdio` (real `StdioServerTransport` driven through in-memory streams), plus the toolchain smoke test. All offline. Recorded fixtures live in `test/fixtures/gmail/`.
 - Phases 1 and 2 are complete: every task verified, including the manual Inspector checks (profile with scopes, search by subject with links, get_email by id).
-- Not built yet (phase 3+): attachment parsers, `getAttachment`, `get_attachment_text`, collect, HTTP transport, resources, prompts.
+- Not built yet (phase 3+): `getAttachment`, `get_attachment_text`, collect, HTTP transport, resources, prompts.
 
 ## Known issues
 
@@ -51,4 +52,4 @@ The phase-by-phase task breakdown with a verify step per task is in [tasks.md](t
 
 ## Next step
 
-Task 3.5 in [tasks.md](tasks.md), attachment parsers: `src/parse/attachments/` with `pdf.ts` (unpdf), `docx.ts` (mammoth), `text.ts` (txt, md, csv, html), and `index.ts` dispatching by mime type and returning `{ text, pages, skipped_reason }`, never throwing. Fixtures: a small real PDF and DOCX. Then 3.6 `getAttachment`, 3.7 `get_attachment_text`, 3.8 wiring into `get_email`, 3.9 docs sync.
+Task 3.6 in [tasks.md](tasks.md), `GmailProvider.getAttachment(messageId, attachmentId)`: fetch `messages/{id}/attachments/{attachmentId}`, decode base64url to bytes, return `RawAttachment` with the metadata from the message. Then 3.7 `get_attachment_text`, 3.8 wiring into `get_email`, 3.9 docs sync.
