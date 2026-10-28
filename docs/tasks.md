@@ -163,7 +163,7 @@ Goal: bodies come out clean, attachments come out as text, `get_attachment_text`
   - Files: `src/parse/attachments/{index,text,pdf,docx}.ts`, `test/fixtures/attachments/sample.pdf`, `sample.docx`, `scanned.pdf`, `sample.csv`, `test/attachments.test.ts`.
   - Verify: tests extract known sentences from the sample PDF and DOCX, scanned PDF gives `NO_TEXT_LAYER`, a `.zip` gives `ATTACHMENT_UNSUPPORTED`, an 11 MB buffer gives `ATTACHMENT_UNSUPPORTED`, a corrupted PDF gives `PARSE_FAILED`.
 
-- [ ] **3.6 Gmail provider: getAttachment**
+- [x] **3.6 Gmail provider: getAttachment** (verified 2026-10-28)
   - Build: `getAttachment(messageId, attachmentId)` returning bytes, via the locked client.
   - Files: `src/providers/gmail/provider.ts`, `test/fixtures/gmail/attachment.json`.
   - Verify: test decodes the recorded base64url into the expected byte length.

@@ -15,6 +15,7 @@ const htmlOnly = fixture('message-html-only') as { id: string };
 const withAttachments = fixture('message-with-attachments') as { id: string };
 const list = fixture('list');
 const thread = fixture('thread');
+const attachment = fixture('attachment') as { size: number; data: string };
 
 /** Responses keyed by path. Every call is recorded with its query for assertions. */
 function fakeClient(
@@ -85,12 +86,70 @@ describe('GmailProvider.getProfile', () => {
     ]);
     expect(provider.name).toBe('gmail');
   });
+});
 
-  it('reports getAttachment as not implemented yet', async () => {
-    const provider = new GmailProvider({ client: fakeClient({}) });
-    await expect(provider.getAttachment('x', 'y')).rejects.toMatchObject({
-      code: 'PROVIDER_ERROR',
+describe('GmailProvider.getAttachment', () => {
+  const PDF_ID = 'ANGjdJ8_report-pdf';
+
+  it('reads the message for metadata, then fetches and decodes the bytes', async () => {
+    const client = fakeClient({
+      ...messageResponses,
+      [`messages/${withAttachments.id}/attachments/${PDF_ID}`]: attachment,
     });
+
+    const raw = await new GmailProvider({ client }).getAttachment(withAttachments.id, PDF_ID);
+
+    expect(client.get.mock.calls).toEqual([
+      [`messages/${withAttachments.id}`, { format: 'full' }],
+      [`messages/${withAttachments.id}/attachments/${PDF_ID}`],
+    ]);
+    expect(raw.attachment_id).toBe(PDF_ID);
+    expect(raw.filename).toBe('report.pdf');
+    expect(raw.mime).toBe('application/pdf');
+    expect(raw.size).toBe(attachment.size);
+    expect(raw.bytes).toBeInstanceOf(Uint8Array);
+    expect(raw.bytes.byteLength).toBe(attachment.size);
+    expect(Buffer.from(raw.bytes.subarray(0, 5)).toString('latin1')).toBe('%PDF-');
+  });
+
+  it('is NOT_FOUND when the id is not on that message, without fetching bytes', async () => {
+    const client = fakeClient(messageResponses);
+    await expect(
+      new GmailProvider({ client }).getAttachment(withAttachments.id, 'ANGjdJ8_other'),
+    ).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      hint: expect.stringContaining('fresh id') as string,
+    });
+    expect(client.get.mock.calls).toHaveLength(1);
+  });
+
+  it('is NOT_FOUND for an inline image id, which is not listed as an attachment', async () => {
+    const client = fakeClient(messageResponses);
+    await expect(
+      new GmailProvider({ client }).getAttachment(withAttachments.id, 'ANGjdJ8_inline-logo'),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('rejects malformed ids as NOT_FOUND without calling Gmail', async () => {
+    const client = fakeClient({});
+    const provider = new GmailProvider({ client });
+    await expect(provider.getAttachment('abc/def', PDF_ID)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    await expect(provider.getAttachment(withAttachments.id, 'x y')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    expect(client.get.mock.calls).toEqual([]);
+  });
+
+  it('is PROVIDER_ERROR when Gmail returns no data', async () => {
+    const client = fakeClient({
+      ...messageResponses,
+      [`messages/${withAttachments.id}/attachments/${PDF_ID}`]: { size: 1 },
+    });
+    await expect(
+      new GmailProvider({ client }).getAttachment(withAttachments.id, PDF_ID),
+    ).rejects.toMatchObject({ code: 'PROVIDER_ERROR' });
   });
 });
 

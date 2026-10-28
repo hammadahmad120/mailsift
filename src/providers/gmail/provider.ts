@@ -12,7 +12,7 @@ import type {
 } from '../types.js';
 import type { GmailClient } from './client.js';
 import type { GmailMessage } from './mime.js';
-import { findBodyPart, listAttachments, readHeaders } from './mime.js';
+import { decodeBase64UrlBytes, findBodyPart, listAttachments, readHeaders } from './mime.js';
 import { buildQuery } from './query-builder.js';
 
 /** Shape of Gmail's `users.getProfile` response. */
@@ -27,6 +27,13 @@ interface GmailListResponse {
   messages?: { id?: string; threadId?: string }[];
   nextPageToken?: string;
   resultSizeEstimate?: number;
+}
+
+/** Shape of Gmail's `users.messages.attachments.get` response. */
+interface GmailAttachmentResponse {
+  size?: number;
+  /** base64url. */
+  data?: string;
 }
 
 /** Shape of Gmail's `users.threads.get` response. */
@@ -53,8 +60,7 @@ export function messageLink(messageId: string): string {
 }
 
 /**
- * Gmail implementation of MailProvider.
- * getProfile, search, getMessage, getThread are done. Phase 3 adds getAttachment.
+ * Gmail implementation of MailProvider. All five read methods.
  */
 export class GmailProvider implements MailProvider {
   readonly name = 'gmail' as const;
@@ -134,8 +140,32 @@ export class GmailProvider implements MailProvider {
       .map(({ message }) => toRawMessage(message));
   }
 
-  getAttachment(_messageId: string, _attachmentId: string): Promise<RawAttachment> {
-    return Promise.reject(notImplemented('getAttachment'));
+  /**
+   * Two calls: the message, to learn the attachment's filename, mime and size
+   * (Gmail's attachment reply carries only bytes), then the bytes themselves.
+   * An id that is not on that message is NOT_FOUND before the second call.
+   */
+  async getAttachment(messageId: string, attachmentId: string): Promise<RawAttachment> {
+    assertId('attachment', attachmentId);
+    const message = await fetchMessage(this.client, messageId);
+    const meta = listAttachments(message.payload).find((a) => a.attachment_id === attachmentId);
+    if (!meta) {
+      throw new MailError(
+        'NOT_FOUND',
+        `Attachment ${attachmentId} is not on message ${messageId}.`,
+        'Attachment ids can change between calls. Re-read the message and use a fresh id.',
+      );
+    }
+
+    const data = await this.client.get<GmailAttachmentResponse>(
+      `messages/${messageId}/attachments/${attachmentId}`,
+    );
+    if (typeof data.data !== 'string') {
+      throw new MailError('PROVIDER_ERROR', 'Gmail attachment response had no data.');
+    }
+
+    const bytes = decodeBase64UrlBytes(data.data);
+    return { ...meta, size: bytes.byteLength, bytes: new Uint8Array(bytes) };
   }
 }
 
@@ -145,7 +175,7 @@ async function fetchMessage(client: GmailClient, messageId: string): Promise<Gma
 }
 
 /** A malformed id is a NOT_FOUND to the caller, not a path-allow-list surprise. */
-function assertId(kind: 'message' | 'thread', id: string): void {
+function assertId(kind: 'message' | 'thread' | 'attachment', id: string): void {
   if (!ID_RE.test(id)) {
     throw new MailError(
       'NOT_FOUND',
@@ -202,8 +232,4 @@ function sortKeyOf(message: GmailMessage): number {
 
 function asCount(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-}
-
-function notImplemented(method: string): MailError {
-  return new MailError('PROVIDER_ERROR', `GmailProvider.${method} is not implemented yet.`);
 }
