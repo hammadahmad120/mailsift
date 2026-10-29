@@ -185,8 +185,8 @@ Goal: bodies come out clean, attachments come out as text, `get_attachment_text`
 
 Goal: one call that returns a whole pile of documents under hard caps.
 
-- [ ] **4.1 Concurrency limiter**
-  - Build: a tiny `pLimit(n)` helper, no dependency.
+- [x] **4.1 Concurrency limiter** (verified 2026-10-29)
+  - Build: a tiny `pLimit(n)` helper, no dependency. Helper only; wiring into `search` and `attachmentTexts` happens in 4.2.
   - Files: `src/util/concurrency.ts`, `test/concurrency.test.ts`.
   - Verify: test proves at most `n` tasks run at once.
 
