@@ -71,6 +71,7 @@ export function registerGetEmail(server: McpServer, deps: ServerDeps): void {
           attachments = await attachmentTexts(provider, raw, {
             maxBytes: deps.config.limits.maxAttachmentBytes,
             maxChars: args.max_attachment_chars ?? deps.config.limits.maxAttachmentChars,
+            concurrency: deps.config.limits.fetchConcurrency,
           });
         } else attachments = listedAttachments(raw);
 

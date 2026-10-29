@@ -10,10 +10,12 @@ import type {
   Document,
   MailProvider,
   MailboxProfile,
+  MessageIdPage,
   RawAttachment,
   RawMessage,
   SearchResult,
 } from '../src/providers/types.js';
+import type { CollectResult } from '../src/tools/collect-mail.js';
 import type { AttachmentTextResult } from '../src/tools/get-attachment-text.js';
 import { createDefaultDeps, createServer, type ServerDeps } from '../src/server.js';
 
@@ -35,6 +37,7 @@ function fakeProvider(overrides: Partial<MailProvider> = {}): MailProvider {
     name: 'gmail',
     getProfile: () => Promise.resolve(profile),
     search: notCalled,
+    listMessageIds: notCalled,
     getMessage: notCalled,
     getThread: notCalled,
     getAttachment: notCalled,
@@ -88,6 +91,7 @@ describe('createServer', () => {
     const { tools } = await client.listTools();
 
     expect(tools.map((t) => t.name).sort()).toEqual([
+      'collect_mail',
       'get_attachment_text',
       'get_email',
       'get_mailbox_profile',
@@ -641,6 +645,7 @@ const EVERY_TOOL: Array<{ name: string; arguments: Record<string, unknown> }> = 
   { name: 'search_mail', arguments: { subject: 'x' } },
   { name: 'get_email', arguments: { message_id: 'm1' } },
   { name: 'get_attachment_text', arguments: { message_id: 'm1', attachment_id: 'a1' } },
+  { name: 'collect_mail', arguments: { subject: 'x' } },
 ];
 
 const samplePdf = new Uint8Array(
@@ -929,4 +934,363 @@ it('fake profile matches the recorded Gmail fixture', () => {
   expect(fixture.emailAddress).toBe(profile.email_address);
   expect(fixture.messagesTotal).toBe(profile.messages_total);
   expect(fixture.threadsTotal).toBe(profile.threads_total);
+});
+
+// ---------------------------------------------------------------------------
+// collect_mail
+// ---------------------------------------------------------------------------
+
+/** ids m01..mNN, newest first as Gmail lists them, served in pages of `pageSize`. */
+function collectProvider(
+  count: number,
+  options: { pageSize?: number; bodyChars?: number; attachments?: boolean } = {},
+): {
+  provider: MailProvider;
+  listMessageIds: ReturnType<typeof vi.fn<MailProvider['listMessageIds']>>;
+  getMessage: ReturnType<typeof vi.fn<MailProvider['getMessage']>>;
+  getAttachment: ReturnType<typeof vi.fn<MailProvider['getAttachment']>>;
+  peak: () => number;
+} {
+  const pageSize = options.pageSize ?? 500;
+  const ids = Array.from({ length: count }, (_, i) => `m${String(i + 1).padStart(2, '0')}`);
+  const body = 'x'.repeat(options.bodyChars ?? 100);
+  let active = 0;
+  let peak = 0;
+
+  const listMessageIds = vi.fn<MailProvider['listMessageIds']>((_filters, page) => {
+    const start = page.page_token ? Number(page.page_token) : 0;
+    const take = Math.min(page.page_size, pageSize);
+    const slice = ids.slice(start, start + take);
+    const next = start + take < ids.length ? String(start + take) : null;
+    const result: MessageIdPage = {
+      query_used: 'subject:(x) -in:spam -in:trash',
+      result_size_estimate: ids.length,
+      next_page_token: next,
+      ids: slice,
+    };
+    return Promise.resolve(result);
+  });
+
+  const getMessage = vi.fn<MailProvider['getMessage']>(async (id) => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((r) => setTimeout(r, 1));
+    active -= 1;
+    return rawMessage({
+      message_id: id,
+      thread_id: `t-${id}`,
+      link: `https://mail.google.com/mail/u/0/#all/${id}`,
+      headers: { ...rawMessage().headers, subject: `Subject ${id}` },
+      body: { kind: 'text', content: body },
+      attachments: options.attachments
+        ? [{ attachment_id: `att-${id}`, filename: 'report.pdf', mime: 'application/pdf', size: 1 }]
+        : [],
+    });
+  });
+
+  const getAttachment = vi.fn<MailProvider['getAttachment']>((_m, attachmentId) =>
+    Promise.resolve(rawAttachment({ attachment_id: attachmentId })),
+  );
+
+  return {
+    provider: fakeProvider({ listMessageIds, getMessage, getAttachment }),
+    listMessageIds,
+    getMessage,
+    getAttachment,
+    peak: () => peak,
+  };
+}
+
+function collectResult(result: Awaited<ReturnType<Client['callTool']>>): CollectResult {
+  return JSON.parse(textOf(result, 0)) as CollectResult;
+}
+
+describe('collect_mail', () => {
+  it('stops adding documents at max_total_chars and reports the cut in skipped and stats', async () => {
+    const fake = collectProvider(30, { bodyChars: 100 });
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+
+    const result = await client.callTool({
+      name: 'collect_mail',
+      arguments: { subject: 'x', max_messages: 30, max_total_chars: 1050, attachments: 'none' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    const body = collectResult(result);
+    expect(body.documents).toHaveLength(10);
+    expect(body.documents.map((d) => d.reference.message_id)).toEqual([
+      'm01',
+      'm02',
+      'm03',
+      'm04',
+      'm05',
+      'm06',
+      'm07',
+      'm08',
+      'm09',
+      'm10',
+    ]);
+    expect(body.skipped).toHaveLength(20);
+    expect(body.skipped[0]).toEqual({ message_id: 'm11', reason: 'MAX_TOTAL_CHARS' });
+    expect(body.skipped.every((s) => s.reason === 'MAX_TOTAL_CHARS')).toBe(true);
+    expect(body.stats).toEqual({
+      messages_found: 30,
+      messages_returned: 10,
+      attachments_returned: 0,
+      total_chars: 1000,
+      truncated: true,
+    });
+    // The cap also stops fetching: far fewer than 30 messages were read.
+    expect(fake.getMessage.mock.calls.length).toBeLessThan(30);
+    expect(fake.getMessage.mock.calls.length).toBeGreaterThanOrEqual(10);
+    expect(textOf(result, 1)).toContain('Collected 10 of about 30');
+    expect(textOf(result, 1)).toContain('truncated');
+  });
+
+  it('returns every match under the caps with exact counts and truncated: false', async () => {
+    const fake = collectProvider(7);
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+
+    const body = collectResult(
+      await client.callTool({ name: 'collect_mail', arguments: { subject: 'x' } }),
+    );
+
+    expect(body.query_used).toBe('subject:(x) -in:spam -in:trash');
+    expect(body.documents).toHaveLength(7);
+    expect(body.documents[0]).toMatchObject({
+      id: 'gmail:m01',
+      kind: 'email',
+      headers: { subject: 'Subject m01' },
+      text: 'x'.repeat(100),
+      attachments: [],
+      truncated: false,
+    });
+    expect(body.documents[0]).not.toHaveProperty('thread_text');
+    expect(body.skipped).toEqual([]);
+    expect(body.stats).toEqual({
+      messages_found: 7,
+      messages_returned: 7,
+      attachments_returned: 0,
+      total_chars: 700,
+      truncated: false,
+    });
+    // Default max_messages (50) asked of the provider; ids only, one page.
+    expect(fake.listMessageIds).toHaveBeenCalledTimes(1);
+    expect(fake.listMessageIds).toHaveBeenCalledWith({ subject: 'x' }, { page_size: 50 });
+  });
+
+  it('pages through ids newest first until max_messages, fetching at most FETCH_CONCURRENCY at once', async () => {
+    const fake = collectProvider(40, { pageSize: 8 });
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+
+    const body = collectResult(
+      await client.callTool({
+        name: 'collect_mail',
+        arguments: { subject: 'x', max_messages: 20 },
+      }),
+    );
+
+    expect(body.documents.map((d) => d.reference.message_id)).toEqual(
+      Array.from({ length: 20 }, (_, i) => `m${String(i + 1).padStart(2, '0')}`),
+    );
+    expect(fake.listMessageIds).toHaveBeenCalledTimes(3);
+    expect(fake.listMessageIds.mock.calls[0]?.[1]).toEqual({ page_size: 20 });
+    expect(fake.listMessageIds.mock.calls[1]?.[1]).toEqual({ page_size: 12, page_token: '8' });
+    expect(fake.getMessage).toHaveBeenCalledTimes(20);
+    expect(fake.peak()).toBe(5);
+    expect(body.stats).toMatchObject({
+      messages_found: 40,
+      messages_returned: 20,
+      truncated: true,
+    });
+  });
+
+  it('order oldest_first walks every id, reverses, and takes the earliest max_messages', async () => {
+    const fake = collectProvider(12, { pageSize: 5 });
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+
+    const body = collectResult(
+      await client.callTool({
+        name: 'collect_mail',
+        arguments: { subject: 'x', max_messages: 4, order: 'oldest_first' },
+      }),
+    );
+
+    expect(body.documents.map((d) => d.reference.message_id)).toEqual(['m12', 'm11', 'm10', 'm09']);
+    expect(fake.listMessageIds).toHaveBeenCalledTimes(3);
+    expect(fake.getMessage).toHaveBeenCalledTimes(4);
+    expect(body.stats).toMatchObject({ messages_found: 12, messages_returned: 4, truncated: true });
+  });
+
+  it('oldest_first never walks more than MAX_SEARCH_IDS ids', async () => {
+    const fake = collectProvider(30, { pageSize: 10 });
+    const config = loadConfig({ MAX_SEARCH_IDS: '15' });
+    const client = await connect(fakeDeps({ config, createProvider: () => fake.provider }));
+
+    const body = collectResult(
+      await client.callTool({
+        name: 'collect_mail',
+        arguments: { subject: 'x', max_messages: 3, order: 'oldest_first' },
+      }),
+    );
+
+    expect(fake.listMessageIds).toHaveBeenCalledTimes(2);
+    expect(fake.listMessageIds.mock.calls[1]?.[1]).toEqual({ page_size: 5, page_token: '10' });
+    expect(body.documents.map((d) => d.reference.message_id)).toEqual(['m15', 'm14', 'm13']);
+    expect(body.stats.truncated).toBe(true);
+  });
+
+  it('lowers max_messages and max_total_chars to the server caps', async () => {
+    const fake = collectProvider(5);
+    const config = loadConfig({ MAX_COLLECT_MESSAGES: '2', MAX_TOTAL_CHARS: '150' });
+    const client = await connect(fakeDeps({ config, createProvider: () => fake.provider }));
+
+    const body = collectResult(
+      await client.callTool({
+        name: 'collect_mail',
+        arguments: { subject: 'x', max_messages: 999, max_total_chars: 999_999 },
+      }),
+    );
+
+    expect(fake.listMessageIds.mock.calls[0]?.[1]).toEqual({ page_size: 2 });
+    expect(body.documents).toHaveLength(1);
+    expect(body.skipped).toEqual([{ message_id: 'm02', reason: 'MAX_TOTAL_CHARS' }]);
+  });
+
+  it('extracts attachment text by default and counts it in total_chars', async () => {
+    const fake = collectProvider(2, { attachments: true });
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+
+    const body = collectResult(
+      await client.callTool({ name: 'collect_mail', arguments: { subject: 'x' } }),
+    );
+
+    expect(fake.getAttachment).toHaveBeenCalledTimes(2);
+    expect(fake.getAttachment).toHaveBeenCalledWith('m01', 'att-m01');
+    const pdfText = body.documents[0]!.attachments[0]!.text;
+    expect(pdfText).toBeTruthy();
+    expect(body.stats.attachments_returned).toBe(2);
+    expect(body.stats.total_chars).toBe(200 + 2 * pdfText!.length);
+    expect(body.skipped).toEqual([]);
+  });
+
+  it('attachments "list" fetches no bytes; "none" omits them', async () => {
+    const listed = collectProvider(1, { attachments: true });
+    let client = await connect(fakeDeps({ createProvider: () => listed.provider }));
+    let body = collectResult(
+      await client.callTool({
+        name: 'collect_mail',
+        arguments: { subject: 'x', attachments: 'list' },
+      }),
+    );
+    expect(listed.getAttachment).not.toHaveBeenCalled();
+    expect(body.documents[0]!.attachments).toEqual([
+      {
+        attachment_id: 'att-m01',
+        filename: 'report.pdf',
+        mime: 'application/pdf',
+        size: 1,
+        text: null,
+        truncated: false,
+        skipped_reason: null,
+      },
+    ]);
+    expect(body.stats.attachments_returned).toBe(1);
+
+    const none = collectProvider(1, { attachments: true });
+    client = await connect(fakeDeps({ createProvider: () => none.provider }));
+    body = collectResult(
+      await client.callTool({
+        name: 'collect_mail',
+        arguments: { subject: 'x', attachments: 'none' },
+      }),
+    );
+    expect(none.getAttachment).not.toHaveBeenCalled();
+    expect(body.documents[0]!.attachments).toEqual([]);
+    expect(body.stats.attachments_returned).toBe(0);
+  });
+
+  it('keeps an attachment failure local: text null, listed in skipped with its filename', async () => {
+    const fake = collectProvider(2, { attachments: true });
+    fake.getAttachment.mockImplementation((messageId, attachmentId) =>
+      messageId === 'm01'
+        ? Promise.reject(new MailError('NOT_FOUND', 'stale id'))
+        : Promise.resolve(rawAttachment({ attachment_id: attachmentId })),
+    );
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+
+    const body = collectResult(
+      await client.callTool({ name: 'collect_mail', arguments: { subject: 'x' } }),
+    );
+
+    expect(body.documents).toHaveLength(2);
+    expect(body.documents[0]!.attachments[0]).toMatchObject({
+      text: null,
+      skipped_reason: 'PARSE_FAILED',
+    });
+    expect(body.skipped).toEqual([
+      { message_id: 'm01', filename: 'report.pdf', reason: 'PARSE_FAILED' },
+    ]);
+    expect(body.stats.attachments_returned).toBe(1);
+  });
+
+  it('a message that fails to fetch is skipped with its error code and the rest come back', async () => {
+    const fake = collectProvider(3);
+    const healthy = fake.getMessage.getMockImplementation()!;
+    fake.getMessage.mockImplementation((id) =>
+      id === 'm02' ? Promise.reject(new MailError('NOT_FOUND', 'gone')) : healthy(id),
+    );
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+
+    const result = await client.callTool({ name: 'collect_mail', arguments: { subject: 'x' } });
+
+    expect(result.isError).toBeFalsy();
+    const body = collectResult(result);
+    expect(body.documents.map((d) => d.reference.message_id)).toEqual(['m01', 'm03']);
+    expect(body.skipped).toEqual([{ message_id: 'm02', reason: 'NOT_FOUND' }]);
+    expect(body.stats).toMatchObject({ messages_found: 3, messages_returned: 2, truncated: false });
+    expect(textOf(result, 1)).toContain('1 skipped');
+  });
+
+  it('include_thread adds thread_text per document and counts it', async () => {
+    const fake = collectProvider(1);
+    const getThread = vi.fn<MailProvider['getThread']>(() =>
+      Promise.resolve([rawMessage({ body: { kind: 'text', content: 'first' } })]),
+    );
+    const provider = fakeProvider({ ...fake.provider, getThread });
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const body = collectResult(
+      await client.callTool({
+        name: 'collect_mail',
+        arguments: { subject: 'x', include_thread: true, attachments: 'none' },
+      }),
+    );
+
+    expect(getThread).toHaveBeenCalledWith('t-m01');
+    const doc = body.documents[0]!;
+    expect(doc.thread_text).toContain('first');
+    expect(body.stats.total_chars).toBe(doc.text.length + doc.thread_text!.length);
+  });
+
+  it('returns QUERY_EMPTY as a structured error when no filter is given', async () => {
+    const fake = collectProvider(1);
+    fake.listMessageIds.mockImplementation(() =>
+      Promise.reject(new MailError('QUERY_EMPTY', 'No search filter was given.')),
+    );
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+
+    const result = await client.callTool({ name: 'collect_mail', arguments: {} });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({ code: 'QUERY_EMPTY' });
+    expect(fake.getMessage).not.toHaveBeenCalled();
+  });
+
+  it('never leaks the token through a collect reply', async () => {
+    const fake = collectProvider(2);
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+    const result = await client.callTool({ name: 'collect_mail', arguments: { subject: 'x' } });
+    expect(JSON.stringify(result)).not.toContain(FAKE_TOKEN);
+  });
 });

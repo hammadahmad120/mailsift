@@ -1,8 +1,10 @@
 import { MailError } from '../../errors.js';
+import { pLimit } from '../../util/concurrency.js';
 import type {
   AttachmentMeta,
   MailProvider,
   MailboxProfile,
+  MessageIdPage,
   RawAttachment,
   RawMessage,
   SearchFilters,
@@ -50,7 +52,12 @@ export interface GmailProviderOptions {
   maxRangeDays?: number;
   /** Injected for tests. Defaults to the current time. */
   now?: () => Date;
+  /** Messages fetched at once by `search`. Default 5 (`FETCH_CONCURRENCY`). */
+  fetchConcurrency?: number;
 }
+
+/** Gmail's own ceiling for `maxResults` on `messages.list`. */
+export const GMAIL_LIST_MAX = 500;
 
 /** Gmail message, thread and attachment ids: URL-safe characters only. */
 const ID_RE = /^[A-Za-z0-9_=-]+$/;
@@ -60,7 +67,7 @@ export function messageLink(messageId: string): string {
 }
 
 /**
- * Gmail implementation of MailProvider. All five read methods.
+ * Gmail implementation of MailProvider. All six read methods.
  */
 export class GmailProvider implements MailProvider {
   readonly name = 'gmail' as const;
@@ -68,12 +75,14 @@ export class GmailProvider implements MailProvider {
   private readonly scopes: readonly string[];
   private readonly maxRangeDays: number;
   private readonly now: () => Date;
+  private readonly fetchConcurrency: number;
 
   constructor(options: GmailProviderOptions) {
     this.client = options.client;
     this.scopes = options.scopes ?? [];
     this.maxRangeDays = options.maxRangeDays ?? 365;
     this.now = options.now ?? (() => new Date());
+    this.fetchConcurrency = options.fetchConcurrency ?? 5;
   }
 
   async getProfile(): Promise<MailboxProfile> {
@@ -94,16 +103,15 @@ export class GmailProvider implements MailProvider {
   }
 
   /**
-   * Two round trips, as Gmail's API is shaped: list ids for the query, then
-   * fetch each message for headers, snippet and attachment list. No bodies leave here.
-   * Fetches are sequential for now; task 4.1 adds the shared concurrency limiter.
+   * One `messages.list` call: ids and paging only, newest first as Gmail
+   * orders them. `collect_mail` pages through this before fetching anything.
    */
-  async search(filters: SearchFilters, page: SearchPage): Promise<SearchResult> {
+  async listMessageIds(filters: SearchFilters, page: SearchPage): Promise<MessageIdPage> {
     const query = buildQuery(filters, { maxRangeDays: this.maxRangeDays, now: this.now() });
 
     const list = await this.client.get<GmailListResponse>('messages', {
       q: query,
-      maxResults: page.page_size,
+      maxResults: Math.min(page.page_size, GMAIL_LIST_MAX),
       pageToken: page.page_token,
     });
 
@@ -111,15 +119,30 @@ export class GmailProvider implements MailProvider {
       .map((m) => m.id)
       .filter((id): id is string => typeof id === 'string' && id !== '');
 
-    const items: SearchResultItem[] = [];
-    for (const id of ids) {
-      items.push(toSearchItem(await fetchMessage(this.client, id)));
-    }
-
     return {
       query_used: query,
       result_size_estimate: asCount(list.resultSizeEstimate),
       next_page_token: list.nextPageToken ?? null,
+      ids,
+    };
+  }
+
+  /**
+   * Two round trips, as Gmail's API is shaped: list ids for the query, then
+   * fetch each message for headers, snippet and attachment list. No bodies leave here.
+   * Fetches run `fetchConcurrency` at a time; results keep Gmail's order.
+   */
+  async search(filters: SearchFilters, page: SearchPage): Promise<SearchResult> {
+    const list = await this.listMessageIds(filters, page);
+    const limit = pLimit(this.fetchConcurrency);
+    const items = await Promise.all(
+      list.ids.map((id) => limit(async () => toSearchItem(await fetchMessage(this.client, id)))),
+    );
+
+    return {
+      query_used: list.query_used,
+      result_size_estimate: list.result_size_estimate,
+      next_page_token: list.next_page_token,
       items,
     };
   }

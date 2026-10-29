@@ -22,6 +22,7 @@ const envSchema = z.object({
   MAX_RANGE_DAYS: positiveInt(365),
   MAX_PAGE_SIZE: positiveInt(100),
   MAX_COLLECT_MESSAGES: positiveInt(200),
+  MAX_SEARCH_IDS: positiveInt(2000),
   MAX_ATTACHMENT_BYTES: positiveInt(10_485_760),
   MAX_MESSAGE_CHARS: positiveInt(50_000),
   MAX_ATTACHMENT_CHARS: positiveInt(100_000),
@@ -43,6 +44,8 @@ export interface Config {
     readonly maxRangeDays: number;
     readonly maxPageSize: number;
     readonly maxCollectMessages: number;
+    /** Most ids `collect_mail` walks when it needs the oldest matches first. */
+    readonly maxSearchIds: number;
     readonly maxAttachmentBytes: number;
     readonly maxMessageChars: number;
     readonly maxAttachmentChars: number;
@@ -85,6 +88,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       maxRangeDays: e.MAX_RANGE_DAYS,
       maxPageSize: e.MAX_PAGE_SIZE,
       maxCollectMessages: e.MAX_COLLECT_MESSAGES,
+      maxSearchIds: e.MAX_SEARCH_IDS,
       maxAttachmentBytes: e.MAX_ATTACHMENT_BYTES,
       maxMessageChars: e.MAX_MESSAGE_CHARS,
       maxAttachmentChars: e.MAX_ATTACHMENT_CHARS,

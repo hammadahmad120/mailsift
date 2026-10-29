@@ -71,6 +71,14 @@ export interface SearchResult {
   items: SearchResultItem[];
 }
 
+/** One page of matching message ids, nothing fetched. The cheap first step of `collect_mail`. */
+export interface MessageIdPage {
+  query_used: string;
+  result_size_estimate: number;
+  next_page_token: string | null;
+  ids: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Document (brief section 9), the only output shape for mail content
 // ---------------------------------------------------------------------------
@@ -154,13 +162,15 @@ export interface RawAttachment {
 }
 
 // ---------------------------------------------------------------------------
-// The provider interface. Exactly five read methods. Nothing else, ever.
+// The provider interface. Exactly six read methods. Nothing else, ever.
 // ---------------------------------------------------------------------------
 
 export interface MailProvider {
   readonly name: ProviderName;
   getProfile(): Promise<MailboxProfile>;
   search(filters: SearchFilters, page: SearchPage): Promise<SearchResult>;
+  /** Ids only, newest first as the provider lists them. No message is fetched. */
+  listMessageIds(filters: SearchFilters, page: SearchPage): Promise<MessageIdPage>;
   getMessage(messageId: string): Promise<RawMessage>;
   /** Messages in the thread, ordered oldest to newest. */
   getThread(threadId: string): Promise<RawMessage[]>;

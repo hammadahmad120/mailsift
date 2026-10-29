@@ -9,6 +9,7 @@ describe('loadConfig', () => {
       maxRangeDays: 365,
       maxPageSize: 100,
       maxCollectMessages: 200,
+      maxSearchIds: 2000,
       maxAttachmentBytes: 10_485_760,
       maxMessageChars: 50_000,
       maxAttachmentChars: 100_000,

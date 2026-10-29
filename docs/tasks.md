@@ -190,10 +190,10 @@ Goal: one call that returns a whole pile of documents under hard caps.
   - Files: `src/util/concurrency.ts`, `test/concurrency.test.ts`.
   - Verify: test proves at most `n` tasks run at once.
 
-- [ ] **4.2 `collect_mail` tool**
-  - Build: search and page until `max_messages`, fetch with `FETCH_CONCURRENCY`, convert, apply `max_total_chars`, fill `skipped` and `stats`.
-  - Files: `src/tools/collect-mail.ts`, `test/server.test.ts`.
-  - Open question (raised 2026-10-23, decide when this task starts): message order when the cap truncates. Gmail lists newest first, which drops the oldest messages from a queue. Proposal: `order: "oldest_first" | "newest_first"` field, walk list ids to the end, reverse, take `max_messages`, plus a `MAX_SEARCH_IDS` config cap. `search_mail` keeps Gmail order.
+- [ ] **4.2 `collect_mail` tool** (built 2026-10-29, awaiting the manual check)
+  - Build: page message ids with the new `listMessageIds` provider method (ids only, no double fetch) until `max_messages`, fetch and convert with `pLimit(FETCH_CONCURRENCY)` through the same code as `get_email`, add documents in order until `max_total_chars` (the cap also stops further fetching), fill `skipped` (per message with an error code, per attachment with its filename, and `MAX_TOTAL_CHARS` for what the cap left out) and `stats`. `pLimit` is now also wired into `GmailProvider.search` and `attachmentTexts`.
+  - Files: `src/tools/collect-mail.ts`, `src/providers/types.ts`, `src/providers/gmail/provider.ts`, `src/config.ts`, `test/server.test.ts`, `test/gmail-provider.test.ts`.
+  - Open question (raised 2026-10-23) resolved 2026-10-29, see decisions.md: `order: "newest_first" | "oldest_first"`, default `newest_first`. `oldest_first` walks the id list to the end (capped by `MAX_SEARCH_IDS`, default 2000), reverses, takes `max_messages`. `search_mail` keeps Gmail order.
   - Verify: test with a fake provider of 30 messages and `max_total_chars` small enough to cut off at 10 checks `stats.truncated: true` and `messages_returned: 10`. Manual: collect last month's mail with attachments in Inspector, read the stats block.
 
 - [ ] **4.3 `get_attachment_file` tool** (added 2026-10-28, see decisions.md)

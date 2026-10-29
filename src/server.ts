@@ -8,6 +8,7 @@ import { loadConfig } from './config.js';
 import { createGmailClient } from './providers/gmail/client.js';
 import { GmailProvider } from './providers/gmail/provider.js';
 import type { MailProvider } from './providers/types.js';
+import { registerCollectMail } from './tools/collect-mail.js';
 import { registerGetAttachmentText } from './tools/get-attachment-text.js';
 import { registerGetEmail } from './tools/get-email.js';
 import { registerGetMailboxProfile } from './tools/get-mailbox-profile.js';
@@ -45,6 +46,7 @@ export function createDefaultDeps(env: NodeJS.ProcessEnv = process.env): ServerD
         }),
         scopes,
         maxRangeDays: config.limits.maxRangeDays,
+        fetchConcurrency: config.limits.fetchConcurrency,
       }),
   };
 }
@@ -56,7 +58,8 @@ export function createServer(deps: ServerDeps): McpServer {
       'Read-only mailbox access. Use get_mailbox_profile to confirm the connection, ' +
       'then search_mail to find messages by subject, sender, dates, keywords or attachments, ' +
       'then get_email with a message_id to read one, ' +
-      'and get_attachment_text to read a pdf, docx or text attachment. ' +
+      'get_attachment_text to read a pdf, docx or text attachment, ' +
+      'or collect_mail to get every matching message as a clean document in one call. ' +
       'No tool can send, modify, label, or delete mail.',
   });
 
@@ -64,6 +67,7 @@ export function createServer(deps: ServerDeps): McpServer {
   registerSearchMail(server, deps);
   registerGetEmail(server, deps);
   registerGetAttachmentText(server, deps);
+  registerCollectMail(server, deps);
 
   return server;
 }

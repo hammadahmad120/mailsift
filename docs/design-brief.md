@@ -171,14 +171,15 @@ Gmail attachment ids are not guaranteed stable across calls. If `attachment_id` 
 
 The one-call bundle. Same filter fields as `search_mail` plus:
 
-| Field             | Type                       | Notes                                                     |
-| ----------------- | -------------------------- | --------------------------------------------------------- |
-| `max_messages`    | number                     | Default 50, hard max `MAX_COLLECT_MESSAGES` (default 200) |
-| `include_thread`  | boolean                    | Default false                                             |
-| `attachments`     | "text" \| "list" \| "none" | Default "text"                                            |
-| `max_total_chars` | number                     | Default 2_000_000. Stop adding documents when reached.    |
+| Field             | Type                             | Notes                                                                                                                                                                    |
+| ----------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `max_messages`    | number                           | Default 50, hard max `MAX_COLLECT_MESSAGES` (default 200)                                                                                                                |
+| `include_thread`  | boolean                          | Default false                                                                                                                                                            |
+| `attachments`     | "text" \| "list" \| "none"       | Default "text"                                                                                                                                                           |
+| `max_total_chars` | number                           | Default 2_000_000. Stop adding documents when reached.                                                                                                                   |
+| `order`           | "newest_first" \| "oldest_first" | Default "newest_first". `oldest_first` walks the id list to the end (capped by `MAX_SEARCH_IDS`), reverses, takes `max_messages`. (changed 2026-10-29, see decisions.md) |
 
-Behaviour: search, page until `max_messages` or end, fetch each message, convert, convert attachments, apply caps, return.
+Behaviour: list message ids, page until `max_messages` or end, fetch each message, convert, convert attachments, apply caps, return. Messages left out by `max_total_chars` appear in `skipped` with reason `MAX_TOTAL_CHARS` (changed 2026-10-29, see decisions.md).
 
 Output:
 
@@ -378,6 +379,7 @@ mailsift/
 | `MAX_RANGE_DAYS`       | 365      |
 | `MAX_PAGE_SIZE`        | 100      |
 | `MAX_COLLECT_MESSAGES` | 200      |
+| `MAX_SEARCH_IDS`       | 2000     |
 | `MAX_ATTACHMENT_BYTES` | 10485760 |
 | `MAX_MESSAGE_CHARS`    | 50000    |
 | `MAX_ATTACHMENT_CHARS` | 100000   |

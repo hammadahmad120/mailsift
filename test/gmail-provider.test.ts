@@ -72,7 +72,7 @@ describe('GmailProvider.getProfile', () => {
     });
   });
 
-  it('exposes exactly the five MailProvider methods', () => {
+  it('exposes exactly the six MailProvider methods', () => {
     const provider = new GmailProvider({ client: fakeClient({}) });
     const methods = Object.getOwnPropertyNames(GmailProvider.prototype).filter(
       (n) => n !== 'constructor',
@@ -82,13 +82,97 @@ describe('GmailProvider.getProfile', () => {
       'getMessage',
       'getProfile',
       'getThread',
+      'listMessageIds',
       'search',
     ]);
     expect(provider.name).toBe('gmail');
   });
 });
 
+describe('GmailProvider.listMessageIds', () => {
+  it('makes one list call and returns ids, paging and the estimate, fetching nothing', async () => {
+    const client = fakeClient({ messages: list });
+    const provider = new GmailProvider({ client, maxRangeDays: 365, now });
+
+    const page = await provider.listMessageIds({ subject: 'Node' }, { page_size: 25 });
+
+    expect(page).toEqual({
+      query_used: 'subject:(Node) -in:spam -in:trash',
+      result_size_estimate: 43,
+      next_page_token: '09876543210987654321',
+      ids: ['18f3a9c0ffee0001', '18f3a9c0ffee0002', '18f3a9c0ffee0003'],
+    });
+    expect(client.get.mock.calls).toEqual([
+      ['messages', { q: page.query_used, maxResults: 25, pageToken: undefined }],
+    ]);
+  });
+
+  it('passes the page token through and never asks Gmail for more than its list ceiling', async () => {
+    const client = fakeClient({ messages: { messages: [] } });
+    const provider = new GmailProvider({ client, now });
+
+    const page = await provider.listMessageIds(
+      { from: 'a@b.c' },
+      { page_size: 5000, page_token: 'tok' },
+    );
+
+    expect(page.ids).toEqual([]);
+    expect(page.next_page_token).toBeNull();
+    expect(client.get.mock.calls[0]?.[1]).toMatchObject({ maxResults: 500, pageToken: 'tok' });
+  });
+
+  it('drops entries without a usable id', async () => {
+    const client = fakeClient({ messages: { messages: [{ id: 'ok' }, {}, { id: '' }] } });
+    const page = await new GmailProvider({ client, now }).listMessageIds(
+      { from: 'a@b.c' },
+      { page_size: 10 },
+    );
+    expect(page.ids).toEqual(['ok']);
+  });
+
+  it('rejects an empty filter set before calling Gmail', async () => {
+    const client = fakeClient({});
+    await expect(
+      new GmailProvider({ client, now }).listMessageIds({}, { page_size: 10 }),
+    ).rejects.toMatchObject({ code: 'QUERY_EMPTY' });
+    expect(client.get.mock.calls).toEqual([]);
+  });
+});
+
 describe('GmailProvider.search', () => {
+  it('fetches at most fetchConcurrency messages at once and keeps list order', async () => {
+    const ids = ['18f3a9c0ffee0001', '18f3a9c0ffee0002', '18f3a9c0ffee0003'];
+    const pending: Array<() => void> = [];
+    let active = 0;
+    let peak = 0;
+    const get = vi.fn((path: string) => {
+      if (path === 'messages') {
+        return Promise.resolve({ messages: ids.map((id) => ({ id, threadId: id })) });
+      }
+      active += 1;
+      peak = Math.max(peak, active);
+      return new Promise((resolve) => {
+        pending.push(() => {
+          active -= 1;
+          resolve({ ...(plain as object), id: path.slice('messages/'.length) });
+        });
+      });
+    });
+    const client = { get } as unknown as GmailClient;
+    const provider = new GmailProvider({ client, now, fetchConcurrency: 2 });
+
+    const result = provider.search({ subject: 'x' }, { page_size: 10 });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(active).toBe(2);
+    while (pending.length) {
+      pending.shift()!();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+
+    expect(peak).toBe(2);
+    expect((await result).items.map((i) => i.message_id)).toEqual(ids);
+  });
+
   it('lists ids with the built query, then fetches each message, returning metadata only', async () => {
     const client = fakeClient({ messages: list, ...messageResponses });
     const provider = new GmailProvider({ client, maxRangeDays: 365, now });
