@@ -2,7 +2,7 @@
 
 Your mailbox, as documents your AI can actually read. Read-only MCP server that searches mail and returns clean text with attachments extracted.
 
-> Status: early. Five tools (`get_mailbox_profile`, `search_mail`, `get_email`, `get_attachment_text`, `collect_mail`) over stdio. Bodies come out clean (HTML converted, quoted replies and signatures removed) and attachments can be returned as text. `get_attachment_file` and HTTP are in progress. See [docs/status.md](docs/status.md) for the phase tracker and [docs/design-brief.md](docs/design-brief.md) for the full design.
+> Status: early. Six tools (`get_mailbox_profile`, `search_mail`, `get_email`, `get_attachment_text`, `get_attachment_file`, `collect_mail`) over stdio. Bodies come out clean (HTML converted, quoted replies and signatures removed) and attachments can be returned as text or as the original file. HTTP transport is in progress. See [docs/status.md](docs/status.md) for the phase tracker and [docs/design-brief.md](docs/design-brief.md) for the full design.
 
 ## Development
 
@@ -34,6 +34,7 @@ How to get a token and how to add the server to Claude Code: [examples/claude-co
 | `search_mail`         | Find messages by `subject`, `from`, `to`, `keywords`, `any_keywords`, `after`, `before`, `has_attachment`, `attachment_types`, `label`, `raw_query`. Metadata and links only, never bodies. Paged with `page_size` and `page_token`.                                                                                                                                            |
 | `get_email`           | Read one message by `message_id` as a document: headers, body text, attachment list, link. `include_thread: true` adds the whole conversation as `thread_text`. `attachments: "text"` extracts each attachment inline. `max_chars` caps the body (default 50000).                                                                                                               |
 | `get_attachment_text` | One attachment as text by `message_id` plus `filename` (preferred) or `attachment_id`. PDF, DOCX, TXT, MD, CSV, HTML. A file it cannot read comes back with `skipped_reason`, never an error for the whole call.                                                                                                                                                                |
+| `get_attachment_file` | The original attachment bytes by `message_id` plus `filename` or `attachment_id`, for apps that store the file as sent. Metadata JSON plus a base64 resource block with the mime type. Files over `MAX_ATTACHMENT_BYTES` (default 10 MB) are refused with `ATTACHMENT_UNSUPPORTED`.                                                                                             |
 | `collect_mail`        | Everything matching the filters as clean documents in one call. Same filters as `search_mail` plus `max_messages` (default 50, cap 200), `order` (`newest_first` default, or `oldest_first` for a backlog), `include_thread`, `attachments` (`text` default), `max_total_chars` (default 2000000). Replies with `documents`, `skipped` (what was left out and why) and `stats`. |
 
 Example `search_mail` call and reply:

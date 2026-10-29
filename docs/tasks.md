@@ -190,19 +190,19 @@ Goal: one call that returns a whole pile of documents under hard caps.
   - Files: `src/util/concurrency.ts`, `test/concurrency.test.ts`.
   - Verify: test proves at most `n` tasks run at once.
 
-- [ ] **4.2 `collect_mail` tool** (built 2026-10-29, awaiting the manual check)
+- [x] **4.2 `collect_mail` tool** (verified 2026-10-29)
   - Build: page message ids with the new `listMessageIds` provider method (ids only, no double fetch) until `max_messages`, fetch and convert with `pLimit(FETCH_CONCURRENCY)` through the same code as `get_email`, add documents in order until `max_total_chars` (the cap also stops further fetching), fill `skipped` (per message with an error code, per attachment with its filename, and `MAX_TOTAL_CHARS` for what the cap left out) and `stats`. `pLimit` is now also wired into `GmailProvider.search` and `attachmentTexts`.
   - Files: `src/tools/collect-mail.ts`, `src/providers/types.ts`, `src/providers/gmail/provider.ts`, `src/config.ts`, `test/server.test.ts`, `test/gmail-provider.test.ts`.
   - Open question (raised 2026-10-23) resolved 2026-10-29, see decisions.md: `order: "newest_first" | "oldest_first"`, default `newest_first`. `oldest_first` walks the id list to the end (capped by `MAX_SEARCH_IDS`, default 2000), reverses, takes `max_messages`. `search_mail` keeps Gmail order.
   - Verify: test with a fake provider of 30 messages and `max_total_chars` small enough to cut off at 10 checks `stats.truncated: true` and `messages_returned: 10`. Manual: collect last month's mail with attachments in Inspector, read the stats block.
 
-- [ ] **4.3 `get_attachment_file` tool** (added 2026-10-28, see decisions.md)
-  - Build: `src/tools/get-attachment-file.ts` taking `message_id` plus `filename` or `attachment_id`, same resolution as `get_attachment_text` (fresh read, id match, else filename, else the only one). Returns the original bytes unchanged: a JSON block `{ attachment_id, filename, mime, size }` plus an MCP binary content block (`type: "resource"`, `blob` as base64, `mimeType`). Over `MAX_ATTACHMENT_BYTES` is `ATTACHMENT_UNSUPPORTED` as a structured error, no bytes sent. No parsing.
+- [x] **4.3 `get_attachment_file` tool** (added 2026-10-28, see decisions.md; verified 2026-10-29)
+  - Build: `src/tools/get-attachment-file.ts` taking `message_id` plus `filename` or `attachment_id`, same resolution as `get_attachment_text` through the shared `findAttachment` (fresh read, id match, else filename, else the only one). Returns the original bytes unchanged: a JSON block `{ attachment_id, filename, mime, size }` plus an MCP embedded resource (`type: "resource"`, `uri: mail://attachment/{message_id}/{filename}`, `blob` as base64, `mimeType`), then the summary line. Over `MAX_ATTACHMENT_BYTES` is `ATTACHMENT_UNSUPPORTED` as a structured error: checked against the listed size before any download, and again against the real size after. No parsing.
   - Why: an app that stores documents wants the file as sent, not the extracted text. The server already has the bytes; handing them over keeps Gmail knowledge and the attachment-id churn out of the app.
   - Files: `src/tools/get-attachment-file.ts`, `test/server.test.ts`.
   - Verify: test decodes the blob and gets the sample PDF byte for byte; an oversized attachment is refused; the every-tool scope tests include it. Manual: fetch a real PDF in Inspector, decode the base64, open the file.
 
-- [ ] **4.4 Phase 4 docs sync**
+- [x] **4.4 Phase 4 docs sync** (verified 2026-10-29)
 
 ---
 

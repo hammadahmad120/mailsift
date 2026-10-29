@@ -16,6 +16,7 @@ import type {
   SearchResult,
 } from '../src/providers/types.js';
 import type { CollectResult } from '../src/tools/collect-mail.js';
+import type { AttachmentFileResult } from '../src/tools/get-attachment-file.js';
 import type { AttachmentTextResult } from '../src/tools/get-attachment-text.js';
 import { createDefaultDeps, createServer, type ServerDeps } from '../src/server.js';
 
@@ -92,6 +93,7 @@ describe('createServer', () => {
 
     expect(tools.map((t) => t.name).sort()).toEqual([
       'collect_mail',
+      'get_attachment_file',
       'get_attachment_text',
       'get_email',
       'get_mailbox_profile',
@@ -645,6 +647,7 @@ const EVERY_TOOL: Array<{ name: string; arguments: Record<string, unknown> }> = 
   { name: 'search_mail', arguments: { subject: 'x' } },
   { name: 'get_email', arguments: { message_id: 'm1' } },
   { name: 'get_attachment_text', arguments: { message_id: 'm1', attachment_id: 'a1' } },
+  { name: 'get_attachment_file', arguments: { message_id: 'm1', filename: 'a.pdf' } },
   { name: 'collect_mail', arguments: { subject: 'x' } },
 ];
 
@@ -934,6 +937,137 @@ it('fake profile matches the recorded Gmail fixture', () => {
   expect(fixture.emailAddress).toBe(profile.email_address);
   expect(fixture.messagesTotal).toBe(profile.messages_total);
   expect(fixture.threadsTotal).toBe(profile.threads_total);
+});
+
+// ---------------------------------------------------------------------------
+// get_attachment_file
+// ---------------------------------------------------------------------------
+
+type ResourceBlock = {
+  type: 'resource';
+  resource: { uri: string; mimeType?: string; blob?: string };
+};
+
+function resourceOf(result: Awaited<ReturnType<Client['callTool']>>): ResourceBlock {
+  const block = (result.content as Array<{ type: string }>).find((b) => b.type === 'resource');
+  if (!block) throw new Error('no resource block in reply');
+  return block as ResourceBlock;
+}
+
+describe('get_attachment_file', () => {
+  it('returns the metadata block and the original bytes, byte for byte, as a base64 resource', async () => {
+    const { provider, getMessage, getAttachment } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const result = await client.callTool({
+      name: 'get_attachment_file',
+      arguments: { message_id: '18f3a9c0ffee0001', filename: 'report.pdf' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(getMessage).toHaveBeenCalledWith('18f3a9c0ffee0001');
+    expect(getAttachment).toHaveBeenCalledWith('18f3a9c0ffee0001', 'att-1');
+    expect(JSON.parse(textOf(result, 0))).toEqual({
+      attachment_id: 'att-1',
+      filename: 'report.pdf',
+      mime: 'application/pdf',
+      size: samplePdf.byteLength,
+    } satisfies AttachmentFileResult);
+
+    const resource = resourceOf(result).resource;
+    expect(resource.mimeType).toBe('application/pdf');
+    expect(resource.uri).toBe('mail://attachment/18f3a9c0ffee0001/report.pdf');
+    const bytes = new Uint8Array(Buffer.from(resource.blob!, 'base64'));
+    expect(bytes).toEqual(samplePdf);
+    expect(textOf(result, 2)).toContain('report.pdf');
+    expect(JSON.stringify(result)).not.toContain('Quarterly report');
+  });
+
+  it('resolves a stale attachment_id through the fresh read like get_attachment_text', async () => {
+    const { provider, getAttachment } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const result = await client.callTool({
+      name: 'get_attachment_file',
+      arguments: { message_id: '18f3a9c0ffee0001', attachment_id: 'stale-id' },
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(getAttachment).toHaveBeenCalledWith('18f3a9c0ffee0001', 'att-1');
+  });
+
+  it('refuses an attachment listed over MAX_ATTACHMENT_BYTES without downloading it', async () => {
+    const { provider, getAttachment } = attachmentProvider();
+    const config = loadConfig({ MAX_ATTACHMENT_BYTES: '500' });
+    const client = await connect(fakeDeps({ config, createProvider: () => provider }));
+
+    const result = await client.callTool({
+      name: 'get_attachment_file',
+      arguments: { message_id: '18f3a9c0ffee0001', filename: 'report.pdf' },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({
+      code: 'ATTACHMENT_UNSUPPORTED',
+      message: expect.stringContaining('500 byte limit') as string,
+    });
+    expect(getAttachment).not.toHaveBeenCalled();
+    expect((result.content as Array<{ type: string }>).some((b) => b.type === 'resource')).toBe(
+      false,
+    );
+  });
+
+  it('refuses when the downloaded bytes turn out larger than the listed size allows', async () => {
+    const small = rawMessage({
+      attachments: [
+        { attachment_id: 'att-1', filename: 'report.pdf', mime: 'application/pdf', size: 10 },
+      ],
+    });
+    const { provider } = attachmentProvider({ getMessage: () => Promise.resolve(small) });
+    const config = loadConfig({ MAX_ATTACHMENT_BYTES: '500' });
+    const client = await connect(fakeDeps({ config, createProvider: () => provider }));
+
+    const result = await client.callTool({
+      name: 'get_attachment_file',
+      arguments: { message_id: '18f3a9c0ffee0001', filename: 'report.pdf' },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({ code: 'ATTACHMENT_UNSUPPORTED' });
+    expect((result.content as Array<{ type: string }>).some((b) => b.type === 'resource')).toBe(
+      false,
+    );
+  });
+
+  it('is NOT_FOUND when neither attachment_id nor filename is given', async () => {
+    const { provider, getMessage } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const result = await client.callTool({
+      name: 'get_attachment_file',
+      arguments: { message_id: '18f3a9c0ffee0001', attachment_id: '', filename: '' },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({ code: 'NOT_FOUND' });
+    expect(getMessage).not.toHaveBeenCalled();
+  });
+
+  it('is NOT_FOUND with the filenames when the name does not match', async () => {
+    const { provider } = attachmentProvider();
+    const client = await connect(fakeDeps({ createProvider: () => provider }));
+
+    const result = await client.callTool({
+      name: 'get_attachment_file',
+      arguments: { message_id: '18f3a9c0ffee0001', filename: 'missing.pdf' },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({
+      code: 'NOT_FOUND',
+      hint: expect.stringContaining('report.pdf') as string,
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

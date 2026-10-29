@@ -44,18 +44,39 @@ export interface AttachmentTextResult {
   skipped_reason: AttachmentSkipReason | null;
 }
 
+export interface AttachmentRef {
+  attachmentId: string | undefined;
+  filename: string | undefined;
+}
+
+/** The caller must name the attachment one way or the other; blanks count as absent. */
+export function attachmentRef(args: {
+  attachment_id?: string | undefined;
+  filename?: string | undefined;
+}): AttachmentRef {
+  const attachmentId = present(args.attachment_id);
+  const filename = present(args.filename);
+  if (attachmentId === undefined && filename === undefined) {
+    throw new MailError(
+      'NOT_FOUND',
+      'Neither attachment_id nor filename was given.',
+      'Pass the attachment_id or the filename from the message attachments list.',
+    );
+  }
+  return { attachmentId, filename };
+}
+
 /**
  * Pick the attachment from a fresh read of the message: by the id the caller
  * has (valid only if issued by a very recent read), else by filename, else the
- * only attachment when there is exactly one. Gmail attachment ids change on
- * every read, so the bytes are always fetched with the id from this read.
+ * only attachment when there is exactly one. Nothing is fetched; the returned
+ * meta carries the id from this read, the only one that is still valid.
  */
-export async function resolveAttachment(
+export async function findAttachment(
   provider: MailProvider,
   messageId: string,
-  attachmentId: string | undefined,
-  filename: string | undefined,
-): Promise<{ meta: AttachmentMeta; raw: RawAttachment }> {
+  { attachmentId, filename }: AttachmentRef,
+): Promise<AttachmentMeta> {
   const message = await provider.getMessage(messageId);
   const list = message.attachments;
   const wanted = filename?.trim().toLowerCase();
@@ -75,7 +96,17 @@ export async function resolveAttachment(
       `Pass filename instead. Attachments on this message: ${names}.`,
     );
   }
+  return meta;
+}
 
+/** `findAttachment`, then the bytes with the fresh id. */
+export async function resolveAttachment(
+  provider: MailProvider,
+  messageId: string,
+  attachmentId: string | undefined,
+  filename: string | undefined,
+): Promise<{ meta: AttachmentMeta; raw: RawAttachment }> {
+  const meta = await findAttachment(provider, messageId, { attachmentId, filename });
   const raw = await provider.getAttachment(messageId, meta.attachment_id);
   return { meta, raw };
 }
@@ -100,16 +131,7 @@ export function registerGetAttachmentText(server: McpServer, deps: ServerDeps): 
     },
     (args, extra) =>
       withMailbox(deps, extra, async (provider) => {
-        const attachmentId = present(args.attachment_id);
-        const filename = present(args.filename);
-        if (attachmentId === undefined && filename === undefined) {
-          throw new MailError(
-            'NOT_FOUND',
-            'Neither attachment_id nor filename was given.',
-            'Pass the attachment_id or the filename from the message attachments list.',
-          );
-        }
-
+        const { attachmentId, filename } = attachmentRef(args);
         const { meta, raw } = await resolveAttachment(
           provider,
           args.message_id,
