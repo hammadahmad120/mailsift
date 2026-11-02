@@ -19,8 +19,16 @@ describe('loadConfig', () => {
       scopeCacheTtlMs: 600_000,
     });
     expect(config.provider).toBe('gmail');
+    expect(config.logLevel).toBe('info');
     expect(config.http.port).toBe(3000);
     expect(config.http.serverKeys).toEqual([]);
+  });
+
+  it('reads LOG_LEVEL and rejects unknown levels', () => {
+    expect(loadConfig({ LOG_LEVEL: 'debug' }).logLevel).toBe('debug');
+    expect(loadConfig({ LOG_LEVEL: 'error' }).logLevel).toBe('error');
+    expect(() => loadConfig({ LOG_LEVEL: 'verbose' })).toThrow(ConfigError);
+    expect(() => loadConfig({ LOG_LEVEL: 'verbose' })).toThrow(/LOG_LEVEL/);
   });
 
   it('applies overrides from the environment', () => {

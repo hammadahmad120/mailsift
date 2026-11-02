@@ -130,7 +130,7 @@ export function registerGetAttachmentText(server: McpServer, deps: ServerDeps): 
       },
     },
     (args, extra) =>
-      withMailbox(deps, extra, async (provider) => {
+      withMailbox(deps, 'get_attachment_text', extra, async (provider) => {
         const { attachmentId, filename } = attachmentRef(args);
         const { meta, raw } = await resolveAttachment(
           provider,

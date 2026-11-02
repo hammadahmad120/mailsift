@@ -9,7 +9,7 @@ import { withMailbox } from './with-mailbox.js';
  *
  * Every tool follows this exact pattern:
  *   1. declare name, description, zod input shape, read-only annotations
- *   2. `withMailbox(deps, extra, fn)`: credentials, scope check, provider, error mapping
+ *   2. `withMailbox(deps, 'tool_name', extra, fn)`: credentials, scope check, provider, error mapping
  *   3. inside `fn`, call one of the provider's five read methods
  *   4. return `toolResult(json, summary)`
  */
@@ -30,7 +30,7 @@ export function registerGetMailboxProfile(server: McpServer, deps: ServerDeps): 
       },
     },
     (_args, extra) =>
-      withMailbox(deps, extra, async (provider) => {
+      withMailbox(deps, 'get_mailbox_profile', extra, async (provider) => {
         const profile = await provider.getProfile();
         return toolResult(
           profile,

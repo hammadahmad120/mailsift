@@ -210,10 +210,10 @@ Goal: one call that returns a whole pile of documents under hard caps.
 
 Goal: the same server reachable over a URL with two headers, safe to run in Docker.
 
-- [ ] **5.1 Logger with redaction**
-  - Build: structured JSON logger to stderr with request id, tool name, duration, counts. Redacts `Authorization`, `X-Mail-Token`, and any value that looks like a bearer token.
-  - Files: `src/logging.ts`, `test/logging.test.ts`.
-  - Verify: the brief's required test: log an object containing a token value, capture output, assert the token string is absent.
+- [x] **5.1 Logger with redaction** (verified 2026-11-02)
+  - Build: structured JSON logger to stderr with request id, tool name, duration, counts. Redacts `Authorization`, `X-Mail-Token`, and any value that looks like a bearer token. As built: `createLogger` with `LOG_LEVEL` (new env var, default `info`), field-name redaction plus `redactSecrets` on every string, `withMailbox(deps, tool, extra, fn)` writes one line per tool call, `main` logs startup as JSON too.
+  - Files: `src/logging.ts`, `test/logging.test.ts`, `src/tools/with-mailbox.ts`, `src/config.ts`, `src/server.ts`, `src/index.ts`.
+  - Verify: the brief's required test: log an object containing a token value, capture output, assert the token string is absent. Manual: `LOG_LEVEL=debug MAIL_TOKEN=<token> npm run dev`, call a tool from Inspector, see one JSON line per call on the terminal with `tool`, `request_id`, `duration_ms`, and grep the output for the token: zero hits.
 
 - [ ] **5.2 Server key check**
   - Build: `assertServerKey(headers)` comparing `Authorization: Bearer` against `MCP_SERVER_KEYS` using constant-time comparison. `AUTH_SERVER_KEY` on failure. Server refuses to start in HTTP mode if the env is empty.

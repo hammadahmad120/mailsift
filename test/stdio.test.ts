@@ -52,7 +52,13 @@ describe('main --stdio', () => {
       log: h.log,
     });
     expect(code).toBe(0);
-    expect(h.logs).toEqual(['[mailsift] stdio server ready']);
+    expect(h.logs).toHaveLength(1);
+    expect(JSON.parse(h.logs[0]!)).toMatchObject({
+      level: 'info',
+      msg: 'stdio server ready',
+      transport: 'stdio',
+      log_level: 'info',
+    });
 
     const init = await h.request(1, 'initialize', {
       protocolVersion: LATEST_PROTOCOL_VERSION,
@@ -87,6 +93,7 @@ describe('main --stdio', () => {
     });
 
     expect(code).toBe(1);
+    expect(JSON.parse(h.logs[0]!)).toMatchObject({ level: 'error', transport: 'stdio' });
     expect(h.logs[0]).toContain('MAX_PAGE_SIZE');
     expect(JSON.stringify(h.logs)).not.toContain(FAKE_TOKEN);
   });
@@ -104,6 +111,7 @@ describe('main --http', () => {
     const logs: string[] = [];
     const code = await main(['--http'], { env: {}, log: (l) => logs.push(l) });
     expect(code).toBe(1);
+    expect(JSON.parse(logs[0]!)).toMatchObject({ level: 'error', transport: 'http' });
     expect(logs[0]).toContain('--http is not implemented yet');
   });
 });

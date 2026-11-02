@@ -21,6 +21,8 @@ export interface Credentials {
 
 /** The slice of the SDK's handler `extra` we care about. Headers arrive in phase 5. */
 export interface RequestContext {
+  /** JSON-RPC id of the tool call, logged so one tool line can be matched to one client request. */
+  requestId?: string | number;
   requestInfo?: {
     headers?: Record<string, string | string[] | undefined>;
   };

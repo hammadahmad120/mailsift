@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LOG_LEVELS, type LogLevel } from './logging.js';
 
 /**
  * All runtime settings, read once from the environment at startup.
@@ -37,6 +38,9 @@ const envSchema = z.object({
   // --- http transport (brief section 6) ---
   MCP_SERVER_KEYS: optionalString,
   PORT: positiveInt(3000),
+
+  // --- logging (brief section 7, point 6) ---
+  LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
 });
 
 export interface Config {
@@ -55,6 +59,8 @@ export interface Config {
     readonly scopeCacheTtlMs: number;
   };
   readonly provider: 'gmail';
+  /** Lowest log level written to stderr. Default `info`. */
+  readonly logLevel: LogLevel;
   readonly http: {
     readonly port: number;
     /** Parsed from comma-separated MCP_SERVER_KEYS. Empty when unset. */
@@ -98,6 +104,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       scopeCacheTtlMs: e.SCOPE_CACHE_TTL_MS,
     }),
     provider: e.MAIL_PROVIDER,
+    logLevel: e.LOG_LEVEL,
     http: Object.freeze({
       port: e.PORT,
       serverKeys: Object.freeze(serverKeys),

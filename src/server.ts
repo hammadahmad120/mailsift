@@ -6,6 +6,7 @@ import { createScopeCheck } from './auth/scope-check.js';
 import type { Config } from './config.js';
 import { loadConfig } from './config.js';
 import { createGmailClient } from './providers/gmail/client.js';
+import { createLogger, type Logger } from './logging.js';
 import { GmailProvider } from './providers/gmail/provider.js';
 import type { MailProvider } from './providers/types.js';
 import { registerCollectMail } from './tools/collect-mail.js';
@@ -30,13 +31,25 @@ export interface ServerDeps {
   checkScope: ScopeCheck;
   /** Builds a provider for one request, with the verified scopes. Credentials live only as long as the call. */
   createProvider: (credentials: Credentials, scopes: readonly string[]) => MailProvider;
+  /** Redacting JSON logger. One line per tool call from `withMailbox`; the HTTP layer adds its own. */
+  logger: Logger;
+}
+
+export interface DefaultDepsOptions {
+  /** Where log lines go. Default stderr. Tests capture them. */
+  logSink?: ((line: string) => void) | undefined;
 }
 
 /** Production wiring: env config, env credentials, Gmail through the locked client. */
-export function createDefaultDeps(env: NodeJS.ProcessEnv = process.env): ServerDeps {
+export function createDefaultDeps(
+  env: NodeJS.ProcessEnv = process.env,
+  options: DefaultDepsOptions = {},
+): ServerDeps {
   const config = loadConfig(env);
+  const logger = createLogger({ level: config.logLevel, sink: options.logSink });
   return {
     config,
+    logger,
     resolveCredentials: createCredentialResolver({ env }),
     checkScope: createScopeCheck({ ttlMs: config.limits.scopeCacheTtlMs }),
     createProvider: (credentials, scopes) =>

@@ -80,7 +80,22 @@ describe('redactSecrets', () => {
     );
   });
 
-  it('leaves ordinary text alone', () => {
+  it('redacts Google refresh tokens, client secrets, JWTs and refresh_token params', () => {
+    expect(redactSecrets('rt 1//0gabc-DEF_123-abcdefghijklmnop end')).toBe('rt [redacted] end');
+    expect(redactSecrets('secret GOCSPX-abc_DEF-123 end')).toBe('secret [redacted] end');
+    expect(redactSecrets('jwt eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxIn0.sig-nature_1 end')).toBe(
+      'jwt [redacted] end',
+    );
+    expect(redactSecrets('https://x?refresh_token=abc&y=1')).toBe(
+      'https://x?refresh_token=[redacted]&y=1',
+    );
+  });
+
+  it('leaves ordinary text alone, including message ids and attachment ids', () => {
     expect(redactSecrets('Message 18f not found')).toBe('Message 18f not found');
+    expect(redactSecrets('attachment ANGjdJ_9ab-CdEf_long-id-value')).toBe(
+      'attachment ANGjdJ_9ab-CdEf_long-id-value',
+    );
+    expect(redactSecrets('path a/1//b')).toBe('path a/1//b');
   });
 });

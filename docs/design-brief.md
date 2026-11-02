@@ -387,6 +387,9 @@ mailsift/
 | `FETCH_CONCURRENCY`    | 5        |
 | `GMAIL_TIMEOUT_MS`     | 20000    |
 | `SCOPE_CACHE_TTL_MS`   | 600000   |
+| `LOG_LEVEL`            | info     |
+
+`LOG_LEVEL` is one of `debug`, `info`, `warn`, `error` (added 2026-11-02, see decisions.md).
 
 ## 16. Testing and verification
 

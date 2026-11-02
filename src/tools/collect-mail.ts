@@ -313,7 +313,7 @@ export function registerCollectMail(server: McpServer, deps: ServerDeps): void {
       },
     },
     (args, extra) =>
-      withMailbox(deps, extra, async (provider) => {
+      withMailbox(deps, 'collect_mail', extra, async (provider) => {
         const { filters } = toSearchCall(args, limits.maxPageSize);
         const result = await collectMail(provider, {
           filters,

@@ -61,14 +61,22 @@ export function isMailError(err: unknown): err is MailError {
 }
 
 /**
- * Last line of defence against leaking a token through an error message.
- * The full redaction lives in the logger (phase 5); this covers the common shapes.
+ * Replaces every known credential shape inside a string.
+ * Used on error messages here and on every string the logger writes (`src/logging.ts`).
+ *
+ * Shapes: Google access tokens (`ya29.`), Google refresh tokens (`1//` plus 20+ chars), Google client
+ * secrets (`GOCSPX-`), JWTs (`eyJ...`), `Bearer <anything>`, and `access_token=` or
+ * `refresh_token=` query values. Field-name based redaction (`Authorization`, `X-Mail-Token`)
+ * is the logger's job, since that needs the key, not just the value.
  */
 export function redactSecrets(text: string): string {
   return text
     .replace(/ya29\.[\w.-]+/g, '[redacted]')
+    .replace(/\b1\/\/[\w-]{20,}/g, '[redacted]')
+    .replace(/\bGOCSPX-[\w-]+/g, '[redacted]')
+    .replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+/g, '[redacted]')
     .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
-    .replace(/access_token=[^&\s]+/gi, 'access_token=[redacted]');
+    .replace(/\b(access_token|refresh_token)=[^&\s]+/gi, '$1=[redacted]');
 }
 
 /**

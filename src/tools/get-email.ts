@@ -60,7 +60,7 @@ export function registerGetEmail(server: McpServer, deps: ServerDeps): void {
       },
     },
     (args, extra) =>
-      withMailbox(deps, extra, async (provider) => {
+      withMailbox(deps, 'get_email', extra, async (provider) => {
         const raw = await provider.getMessage(args.message_id);
         const thread = args.include_thread ? await provider.getThread(raw.thread_id) : undefined;
 

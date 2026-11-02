@@ -1,6 +1,7 @@
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { ConfigError } from './config.js';
+import { createLogger } from './logging.js';
 import { createDefaultDeps, createServer } from './server.js';
 import { runStdio, type StdioStreams } from './transports/stdio.js';
 
@@ -19,29 +20,30 @@ export function parseTransportFlag(argv: readonly string[]): TransportName {
 export interface MainOptions {
   env?: NodeJS.ProcessEnv;
   streams?: StdioStreams;
-  /** Where diagnostics go. Defaults to stderr. Never stdout. */
+  /** Where log lines go (JSON, one per line). Defaults to stderr. Never stdout. */
   log?: (line: string) => void;
 }
 
 /** Returns the process exit code. Only returns early on error; in stdio mode the transport keeps the process alive. */
 export async function main(argv: readonly string[], options: MainOptions = {}): Promise<number> {
-  const log = options.log ?? ((line: string) => console.error(line));
+  // Startup logger: config is not loaded yet, so this one uses the default level.
+  const boot = createLogger({ sink: options.log });
   const transport = parseTransportFlag(argv);
 
   if (transport === 'http') {
-    log(`[${PACKAGE_NAME}] --http is not implemented yet (phase 5). Run with --stdio.`);
+    boot.error('--http is not implemented yet (phase 5). Run with --stdio.', { transport });
     return 1;
   }
 
   try {
-    const deps = createDefaultDeps(options.env ?? process.env);
+    const deps = createDefaultDeps(options.env ?? process.env, { logSink: options.log });
     const server = createServer(deps);
     await runStdio(server, options.streams ?? {});
-    log(`[${PACKAGE_NAME}] stdio server ready`);
+    deps.logger.info('stdio server ready', { transport, log_level: deps.config.logLevel });
     return 0;
   } catch (err) {
     const message = err instanceof ConfigError ? err.message : 'Failed to start.';
-    log(`[${PACKAGE_NAME}] ${message}`);
+    boot.error(message, { transport });
     return 1;
   }
 }

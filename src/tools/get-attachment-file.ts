@@ -62,7 +62,7 @@ export function registerGetAttachmentFile(server: McpServer, deps: ServerDeps): 
       },
     },
     (args, extra) =>
-      withMailbox(deps, extra, async (provider): Promise<CallToolResult> => {
+      withMailbox(deps, 'get_attachment_file', extra, async (provider): Promise<CallToolResult> => {
         const meta = await findAttachment(provider, args.message_id, attachmentRef(args));
         // The listed size is checked first so an oversized file is never downloaded.
         if (meta.size > maxBytes) throw tooLarge(meta.filename, meta.size, maxBytes);

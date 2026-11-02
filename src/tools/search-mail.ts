@@ -99,7 +99,7 @@ export function registerSearchMail(server: McpServer, deps: ServerDeps): void {
       },
     },
     (args, extra) =>
-      withMailbox(deps, extra, async (provider) => {
+      withMailbox(deps, 'search_mail', extra, async (provider) => {
         const { filters, page } = toSearchCall(args, deps.config.limits.maxPageSize);
         const result = await provider.search(filters, page);
 

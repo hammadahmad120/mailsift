@@ -18,6 +18,7 @@ import type {
 import type { CollectResult } from '../src/tools/collect-mail.js';
 import type { AttachmentFileResult } from '../src/tools/get-attachment-file.js';
 import type { AttachmentTextResult } from '../src/tools/get-attachment-text.js';
+import { createLogger, silentLogger } from '../src/logging.js';
 import { createDefaultDeps, createServer, type ServerDeps } from '../src/server.js';
 
 const FAKE_TOKEN = 'ya29.test-token-must-never-leak';
@@ -52,8 +53,17 @@ function fakeDeps(overrides: Partial<ServerDeps> = {}): ServerDeps {
     resolveCredentials: () => Promise.resolve({ provider: 'gmail', token: FAKE_TOKEN }),
     checkScope: () => Promise.resolve({ scopes: [READONLY] }),
     createProvider: () => fakeProvider(),
+    logger: silentLogger(),
     ...overrides,
   };
+}
+
+/** A capturing logger for the tool-call log line tests. */
+function captureLogger() {
+  const lines: string[] = [];
+  const logger = createLogger({ sink: (line) => lines.push(line), level: 'debug' });
+  const records = () => lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+  return { lines, logger, records };
 }
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -1426,5 +1436,71 @@ describe('collect_mail', () => {
     const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
     const result = await client.callTool({ name: 'collect_mail', arguments: { subject: 'x' } });
     expect(JSON.stringify(result)).not.toContain(FAKE_TOKEN);
+  });
+});
+
+describe('tool call logging (withMailbox)', () => {
+  it('writes one info line per successful call with tool, request id and duration', async () => {
+    const log = captureLogger();
+    const client = await connect(fakeDeps({ logger: log.logger }));
+
+    await client.callTool({ name: 'get_mailbox_profile', arguments: {} });
+
+    expect(log.records()).toHaveLength(1);
+    const line = log.records()[0]!;
+    expect(line).toMatchObject({ level: 'info', msg: 'tool', tool: 'get_mailbox_profile' });
+    expect(typeof line['duration_ms']).toBe('number');
+    expect(line['request_id']).toBeDefined();
+  });
+
+  it('writes a warn line with the error code for a MailError and an error line for an unknown throw', async () => {
+    const log = captureLogger();
+    const provider = fakeProvider({
+      getProfile: () => Promise.reject(new MailError('RATE_LIMITED', 'slow down')),
+      getMessage: () => Promise.reject(new TypeError(`broken ${FAKE_TOKEN}`)),
+    });
+    const client = await connect(fakeDeps({ logger: log.logger, createProvider: () => provider }));
+
+    await client.callTool({ name: 'get_mailbox_profile', arguments: {} });
+    await client.callTool({ name: 'get_email', arguments: { message_id: 'abc' } });
+
+    expect(log.records()).toMatchObject([
+      { level: 'warn', msg: 'tool', tool: 'get_mailbox_profile', code: 'RATE_LIMITED' },
+      {
+        level: 'error',
+        msg: 'tool',
+        tool: 'get_email',
+        code: 'PROVIDER_ERROR',
+        error: { name: 'TypeError' },
+      },
+    ]);
+    expect(log.lines.join('\n')).not.toContain(FAKE_TOKEN);
+  });
+
+  it('never logs the token even when the credential step itself fails with it in the message', async () => {
+    const log = captureLogger();
+    const resolveCredentials: CredentialResolver = () =>
+      Promise.reject(new MailError('AUTH_TOKEN_INVALID', `rejected Bearer ${FAKE_TOKEN}`));
+    const client = await connect(fakeDeps({ logger: log.logger, resolveCredentials }));
+
+    await client.callTool({ name: 'search_mail', arguments: { subject: 'x' } });
+
+    expect(log.records()[0]).toMatchObject({ level: 'warn', code: 'AUTH_TOKEN_INVALID' });
+    expect(log.lines.join('\n')).not.toContain(FAKE_TOKEN);
+  });
+
+  it('createDefaultDeps builds a logger at the configured level writing to the given sink', () => {
+    const lines: string[] = [];
+    const deps = createDefaultDeps(
+      { MAIL_TOKEN: FAKE_TOKEN, LOG_LEVEL: 'warn' },
+      { logSink: (line) => lines.push(line) },
+    );
+
+    deps.logger.info('hidden');
+    deps.logger.warn('shown', { token: FAKE_TOKEN });
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('"msg":"shown"');
+    expect(lines[0]).not.toContain(FAKE_TOKEN);
   });
 });

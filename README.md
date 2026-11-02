@@ -26,6 +26,8 @@ npx @modelcontextprotocol/inspector -e MAIL_TOKEN=<token> npx tsx src/index.ts
 
 How to get a token and how to add the server to Claude Code: [examples/claude-code.md](examples/claude-code.md). The `--http` transport is not built yet.
 
+Logs are JSON lines on stderr, one per tool call (tool name, request id, duration, error code), never on stdout. Set `LOG_LEVEL` to `debug`, `info` (default), `warn` or `error`. Tokens and `Authorization` / `X-Mail-Token` values are redacted before anything is written.
+
 ## Tools
 
 | Tool                  | What it does                                                                                                                                                                                                                                                                                                                                                                    |
