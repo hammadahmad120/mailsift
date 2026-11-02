@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createCredentialResolver } from '../src/auth/credentials.js';
+import {
+  createCredentialResolver,
+  credentialsFromHeaders,
+  isHttpRequest,
+} from '../src/auth/credentials.js';
 import { MailError } from '../src/errors.js';
 
 function tokenResponse(token: string, expiresIn = 3600): Response {
@@ -112,5 +116,97 @@ describe('createCredentialResolver (env / stdio)', () => {
     });
     expect((await resolve()).token).toBe('ya29.direct');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('createCredentialResolver (headers / HTTP, strict by transport)', () => {
+  const HEADER_TOKEN = 'ya29.from-header';
+  const ENV_TOKEN = 'ya29.from-env';
+  const http = (headers: Record<string, string | string[] | undefined>) => ({
+    requestId: 7,
+    requestInfo: { headers },
+  });
+
+  it('detects the transport from the presence of requestInfo', () => {
+    expect(isHttpRequest(undefined)).toBe(false);
+    expect(isHttpRequest({ requestId: 1 })).toBe(false);
+    expect(isHttpRequest({ requestInfo: {} })).toBe(true);
+    expect(isHttpRequest(http({}))).toBe(true);
+  });
+
+  it('returns the X-Mail-Token header and defaults the provider to gmail', async () => {
+    const fetchMock = vi.fn();
+    const resolve = createCredentialResolver({ env: {}, fetch: fetchMock });
+
+    await expect(resolve(http({ 'x-mail-token': HEADER_TOKEN }))).resolves.toEqual({
+      provider: 'gmail',
+      token: HEADER_TOKEN,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('honours X-Mail-Provider and refuses an unsupported one per request', async () => {
+    const resolve = createCredentialResolver({ env: {} });
+
+    await expect(
+      resolve(http({ 'X-Mail-Token': HEADER_TOKEN, 'X-Mail-Provider': 'gmail' })),
+    ).resolves.toEqual({ provider: 'gmail', token: HEADER_TOKEN });
+    await expect(
+      resolve(http({ 'x-mail-token': HEADER_TOKEN, 'x-mail-provider': 'outlook' })),
+    ).rejects.toMatchObject({ code: 'PROVIDER_ERROR' });
+  });
+
+  it('ignores env credentials entirely when the call came over HTTP', async () => {
+    const fetchMock = vi.fn();
+    const resolve = createCredentialResolver({
+      env: { MAIL_TOKEN: ENV_TOKEN, ...refreshEnv },
+      fetch: fetchMock,
+    });
+
+    // header present: header wins, env never consulted
+    await expect(resolve(http({ 'x-mail-token': HEADER_TOKEN }))).resolves.toEqual({
+      provider: 'gmail',
+      token: HEADER_TOKEN,
+    });
+
+    // header missing: structured error, NOT the env token
+    const err = await resolve(http({})).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(MailError);
+    expect((err as MailError).code).toBe('AUTH_MISSING_TOKEN');
+    expect((err as MailError).hint).toContain('X-Mail-Token');
+    expect(JSON.stringify((err as MailError).toBody())).not.toContain(ENV_TOKEN);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // the same resolver still serves stdio calls from env
+    await expect(resolve()).resolves.toEqual({ provider: 'gmail', token: ENV_TOKEN });
+  });
+
+  it('treats a blank or repeated X-Mail-Token as missing', async () => {
+    const resolve = createCredentialResolver({ env: { MAIL_TOKEN: ENV_TOKEN } });
+    await expect(resolve(http({ 'x-mail-token': '  ' }))).rejects.toMatchObject({
+      code: 'AUTH_MISSING_TOKEN',
+    });
+    await expect(resolve(http({ 'x-mail-token': ['a', 'b'] }))).rejects.toMatchObject({
+      code: 'AUTH_MISSING_TOKEN',
+    });
+  });
+
+  it('never caches a header token: each request is resolved from its own headers', async () => {
+    const resolve = createCredentialResolver({ env: {} });
+    await expect(resolve(http({ 'x-mail-token': 'ya29.first' }))).resolves.toMatchObject({
+      token: 'ya29.first',
+    });
+    await expect(resolve(http({ 'x-mail-token': 'ya29.second' }))).resolves.toMatchObject({
+      token: 'ya29.second',
+    });
+    await expect(resolve(http({}))).rejects.toMatchObject({ code: 'AUTH_MISSING_TOKEN' });
+  });
+
+  it('credentialsFromHeaders is usable on its own', () => {
+    expect(credentialsFromHeaders({ 'x-mail-token': HEADER_TOKEN })).toEqual({
+      provider: 'gmail',
+      token: HEADER_TOKEN,
+    });
+    expect(() => credentialsFromHeaders({})).toThrow(MailError);
   });
 });

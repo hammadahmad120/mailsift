@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { Config } from '../config.js';
 import { ConfigError } from '../config.js';
 import { MailError } from '../errors.js';
+import { headerValue, type HeaderMap } from './headers.js';
 
 /**
  * The server key check for the HTTP transport (brief section 6).
@@ -15,8 +16,7 @@ import { MailError } from '../errors.js';
  * whatever its length or how many leading characters match.
  */
 
-/** Header map as Node and Express hand it over: lowercased names, string or string[] values. */
-export type HeaderMap = Record<string, string | string[] | undefined>;
+export type { HeaderMap } from './headers.js';
 
 export type ServerKeyCheck = (headers: HeaderMap) => void;
 
@@ -32,15 +32,6 @@ export function safeEqual(a: string, b: string): boolean {
     return false;
   }
   return timingSafeEqual(left, right);
-}
-
-function headerValue(headers: HeaderMap, name: string): string | undefined {
-  const direct = headers[name] ?? headers[name.toLowerCase()];
-  if (direct !== undefined) return Array.isArray(direct) ? undefined : direct;
-  // Fall back to a case-insensitive scan for callers that pass raw header objects.
-  const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase());
-  const value = key === undefined ? undefined : headers[key];
-  return Array.isArray(value) ? undefined : value;
 }
 
 /** Pulls the bearer value out of the Authorization header, or undefined when absent or malformed. */

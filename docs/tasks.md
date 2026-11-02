@@ -220,10 +220,11 @@ Goal: the same server reachable over a URL with two headers, safe to run in Dock
   - Files: `src/auth/server-keys.ts`, `test/server-keys.test.ts`.
   - Verify: `npm run check` green; tests show a valid key passes, a wrong key, a prefix, a missing header and a `Basic` scheme all give `AUTH_SERVER_KEY`, the error never echoes the presented value, and `requireServerKeys` throws on an empty `MCP_SERVER_KEYS`.
 
-- [ ] **5.3 Header credentials**
-  - Build: `resolveCredentials(extra)` gains the HTTP branch reading `X-Mail-Provider` and `X-Mail-Token` from `extra.requestInfo.headers`.
+- [x] **5.3 Header credentials** (verified 2026-11-02)
+  - Build: `resolveCredentials(extra)` gains the HTTP branch reading `X-Mail-Provider` and `X-Mail-Token` from `extra.requestInfo.headers`. As built: strict by transport. When `requestInfo` is present (HTTP) only the headers count and a missing `X-Mail-Token` is `AUTH_MISSING_TOKEN` even with env credentials set; env is the stdio path. `credentialsFromHeaders` and `isHttpRequest` exported; shared `headerValue` in `src/auth/headers.ts` used by server keys too.
   - Why: the one-place rule from task 1.4 pays off here.
-  - Verify: tests cover env, headers, and header-over-env precedence.
+  - Files: `src/auth/credentials.ts`, `src/auth/headers.ts`, `test/credentials.test.ts`, `test/headers.test.ts`.
+  - Verify: tests cover env (stdio), headers (HTTP), env ignored on HTTP, missing header on HTTP is a structured error that never carries the env token, provider header honoured and refused, blank and repeated headers treated as missing, header tokens never cached.
 
 - [ ] **5.4 Express app with Streamable HTTP**
   - Build: `POST /mcp` using `StreamableHTTPServerTransport` in stateless mode (new transport per request, no sessions, which matches "stateless" in the brief), `GET /healthz`. Server key checked before the transport sees the request.

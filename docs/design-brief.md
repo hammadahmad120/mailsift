@@ -77,6 +77,7 @@ Rules:
 
 - Tokens never appear in tool arguments, tool schemas, logs, or error messages.
 - Tool handlers read the headers from the request context the SDK passes to handlers (`extra.requestInfo.headers`). Wrap this in one function, `resolveCredentials(extra)`, so a stored-account mode can be added later by changing one place.
+- Strict by transport: a call that arrived over HTTP takes mail credentials from the headers only. The server never falls back to `MAIL_TOKEN` or the refresh trio in its own environment for an HTTP call; a missing `X-Mail-Token` is `AUTH_MISSING_TOKEN`. Env credentials are the stdio path (changed 2026-11-02, see decisions.md).
 - Missing or bad headers produce a structured error (section 10), not a crash.
 
 ### stdio transport (Claude Code, Cursor, local scripts)

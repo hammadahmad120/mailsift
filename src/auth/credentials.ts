@@ -1,31 +1,64 @@
 import { MailError } from '../errors.js';
 import type { ProviderName } from '../providers/types.js';
+import { headerValue, type HeaderMap } from './headers.js';
 
 /**
- * The ONLY place credentials enter the server.
+ * The ONLY place credentials enter the server. Strict by transport (decision 2026-11-02):
  *
- * Phase 1: stdio, credentials come from env.
+ * HTTP (the SDK's `extra.requestInfo` is present): credentials come ONLY from the request headers.
+ *   - X-Mail-Token: the provider access token, used for this request and forgotten
+ *   - X-Mail-Provider: which adapter, default gmail
+ *   A missing X-Mail-Token is AUTH_MISSING_TOKEN even when the env holds a token, so a shared
+ *   deployment can never fall back to the operator's mailbox for a caller that forgot the header.
+ *
+ * stdio (no `requestInfo`): credentials come from env.
  *   - MAIL_TOKEN is used as-is, or
  *   - GMAIL_REFRESH_TOKEN + GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET mint an access
  *     token from Google and cache it in memory until shortly before it expires.
- * Phase 5 adds the HTTP branch: X-Mail-Provider / X-Mail-Token headers from `extra`.
  *
  * Tokens are returned to the caller for one request and never stored anywhere
- * except the in-memory refresh cache below.
+ * except the in-memory refresh cache below, which only the env path uses.
  */
+
+export const MAIL_TOKEN_HEADER = 'x-mail-token';
+export const MAIL_PROVIDER_HEADER = 'x-mail-provider';
 
 export interface Credentials {
   provider: ProviderName;
   token: string;
 }
 
-/** The slice of the SDK's handler `extra` we care about. Headers arrive in phase 5. */
+/** The slice of the SDK's handler `extra` we care about. */
 export interface RequestContext {
   /** JSON-RPC id of the tool call, logged so one tool line can be matched to one client request. */
   requestId?: string | number;
+  /** Present only when the call arrived over HTTP. Its presence selects the header path. */
   requestInfo?: {
-    headers?: Record<string, string | string[] | undefined>;
+    headers?: HeaderMap;
   };
+}
+
+/** True when the call came over HTTP: the SDK attaches `requestInfo` only on that transport. */
+export function isHttpRequest(extra: RequestContext | undefined): boolean {
+  return extra?.requestInfo !== undefined;
+}
+
+/**
+ * The HTTP branch: pure, reads the two mail headers and nothing else.
+ * Exported so the HTTP layer and tests can exercise it without a resolver.
+ */
+export function credentialsFromHeaders(headers: HeaderMap): Credentials {
+  const token = headerValue(headers, MAIL_TOKEN_HEADER);
+  if (token === undefined) {
+    throw new MailError(
+      'AUTH_MISSING_TOKEN',
+      'No mail token sent with the request.',
+      'Send the mailbox access token in the X-Mail-Token header (and X-Mail-Provider, default gmail). ' +
+        'Over HTTP the server never reads mail credentials from its own environment.',
+    );
+  }
+  const provider = parseProvider(headerValue(headers, MAIL_PROVIDER_HEADER));
+  return { provider, token };
 }
 
 export type CredentialResolver = (extra?: RequestContext) => Promise<Credentials>;
@@ -53,7 +86,11 @@ export function createCredentialResolver(options: ResolverOptions = {}): Credent
   const provider = parseProvider(env['MAIL_PROVIDER']);
   let cached: CachedToken | null = null;
 
-  return async (_extra?: RequestContext): Promise<Credentials> => {
+  return async (extra?: RequestContext): Promise<Credentials> => {
+    if (isHttpRequest(extra)) {
+      return credentialsFromHeaders(extra?.requestInfo?.headers ?? {});
+    }
+
     const direct = nonEmpty(env['MAIL_TOKEN']);
     if (direct) return { provider, token: direct };
 

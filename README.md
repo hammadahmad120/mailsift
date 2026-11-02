@@ -24,7 +24,7 @@ MAIL_TOKEN=<read-only Gmail access token> npm run dev            # stdio, for Cl
 npx @modelcontextprotocol/inspector -e MAIL_TOKEN=<token> npx tsx src/index.ts
 ```
 
-How to get a token and how to add the server to Claude Code: [examples/claude-code.md](examples/claude-code.md). The `--http` transport is not built yet.
+How to get a token and how to add the server to Claude Code: [examples/claude-code.md](examples/claude-code.md). The `--http` transport is not built yet. When it is, every HTTP request will carry its own `X-Mail-Token`; the env credentials above are for stdio only.
 
 Logs are JSON lines on stderr, one per tool call (tool name, request id, duration, error code), never on stdout. Set `LOG_LEVEL` to `debug`, `info` (default), `warn` or `error`. Tokens and `Authorization` / `X-Mail-Token` values are redacted before anything is written.
 
