@@ -215,9 +215,10 @@ Goal: the same server reachable over a URL with two headers, safe to run in Dock
   - Files: `src/logging.ts`, `test/logging.test.ts`, `src/tools/with-mailbox.ts`, `src/config.ts`, `src/server.ts`, `src/index.ts`.
   - Verify: the brief's required test: log an object containing a token value, capture output, assert the token string is absent. Manual: `LOG_LEVEL=debug MAIL_TOKEN=<token> npm run dev`, call a tool from Inspector, see one JSON line per call on the terminal with `tool`, `request_id`, `duration_ms`, and grep the output for the token: zero hits.
 
-- [ ] **5.2 Server key check**
-  - Build: `assertServerKey(headers)` comparing `Authorization: Bearer` against `MCP_SERVER_KEYS` using constant-time comparison. `AUTH_SERVER_KEY` on failure. Server refuses to start in HTTP mode if the env is empty.
+- [x] **5.2 Server key check** (verified 2026-11-02)
+  - Build: `assertServerKey(headers)` comparing `Authorization: Bearer` against `MCP_SERVER_KEYS` using constant-time comparison. `AUTH_SERVER_KEY` on failure. Server refuses to start in HTTP mode if the env is empty. As built: `createServerKeyCheck(keys)` returns the check, `safeEqual` wraps `timingSafeEqual`, `bearerToken` parses the header, `requireServerKeys(config)` throws `ConfigError` on an empty list for the HTTP entry point (5.4/5.5) to call. `/healthz` will stay outside the check.
   - Files: `src/auth/server-keys.ts`, `test/server-keys.test.ts`.
+  - Verify: `npm run check` green; tests show a valid key passes, a wrong key, a prefix, a missing header and a `Basic` scheme all give `AUTH_SERVER_KEY`, the error never echoes the presented value, and `requireServerKeys` throws on an empty `MCP_SERVER_KEYS`.
 
 - [ ] **5.3 Header credentials**
   - Build: `resolveCredentials(extra)` gains the HTTP branch reading `X-Mail-Provider` and `X-Mail-Token` from `extra.requestInfo.headers`.
