@@ -11,10 +11,13 @@ import { headerValue, type HeaderMap } from './headers.js';
  *   A missing X-Mail-Token is AUTH_MISSING_TOKEN even when the env holds a token, so a shared
  *   deployment can never fall back to the operator's mailbox for a caller that forgot the header.
  *
- * stdio (no `requestInfo`): credentials come from env.
+ * stdio (no `requestInfo`): credentials come from env. These five variables are stdio ONLY:
+ *   MAIL_PROVIDER, MAIL_TOKEN, GMAIL_REFRESH_TOKEN, GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET.
+ *   A stdio client launches the server as a child process and has no headers to put them in.
  *   - MAIL_TOKEN is used as-is, or
  *   - GMAIL_REFRESH_TOKEN + GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET mint an access
  *     token from Google and cache it in memory until shortly before it expires.
+ *   An HTTP deployment can leave all five unset.
  *
  * Tokens are returned to the caller for one request and never stored anywhere
  * except the in-memory refresh cache below, which only the env path uses.
@@ -91,6 +94,7 @@ export function createCredentialResolver(options: ResolverOptions = {}): Credent
       return credentialsFromHeaders(extra?.requestInfo?.headers ?? {});
     }
 
+    // stdio path from here on. Nothing below runs for an HTTP call.
     const direct = nonEmpty(env['MAIL_TOKEN']);
     if (direct) return { provider, token: direct };
 

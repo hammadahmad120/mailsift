@@ -32,7 +32,9 @@ const envSchema = z.object({
   GMAIL_TIMEOUT_MS: positiveInt(20_000),
   SCOPE_CACHE_TTL_MS: positiveInt(600_000),
 
-  // --- stdio provider selection (brief section 6) ---
+  // --- stdio ONLY: provider selection (brief section 6). HTTP calls take X-Mail-Provider instead. ---
+  // The other stdio-only credentials (MAIL_TOKEN, GMAIL_REFRESH_TOKEN, GMAIL_CLIENT_ID,
+  // GMAIL_CLIENT_SECRET) are secrets and are read by `resolveCredentials`, never by this file.
   MAIL_PROVIDER: z.enum(['gmail']).default('gmail'),
 
   // --- http transport (brief section 6) ---
