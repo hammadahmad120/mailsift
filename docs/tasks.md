@@ -226,11 +226,11 @@ Goal: the same server reachable over a URL with two headers, safe to run in Dock
   - Files: `src/auth/credentials.ts`, `src/auth/headers.ts`, `test/credentials.test.ts`, `test/headers.test.ts`.
   - Verify: tests cover env (stdio), headers (HTTP), env ignored on HTTP, missing header on HTTP is a structured error that never carries the env token, provider header honoured and refused, blank and repeated headers treated as missing, header tokens never cached.
 
-- [ ] **5.4 Express app with Streamable HTTP**
-  - Build: `POST /mcp` using `StreamableHTTPServerTransport` in stateless mode (new transport per request, no sessions, which matches "stateless" in the brief), `GET /healthz`. Server key checked before the transport sees the request.
+- [x] **5.4 Express app with Streamable HTTP** (ticked 2026-11-03; tests green, manual curl check deferred to the end of phase 5)
+  - Build: `POST /mcp` using `StreamableHTTPServerTransport` in stateless mode (new transport per request, no sessions, which matches "stateless" in the brief), `GET /healthz`. Server key checked before the transport sees the request. As built: `createHttpApp(deps)` (throws `ConfigError` on empty keys) and `runHttp(deps, { port, host })`; one `McpServer` plus one transport per request with `enableJsonResponse`; request id in `X-Request-Id`, per-request child logger so `http` and `tool` lines share `request_id`; 401/404/405/400/500 all answer the structured `{ code, message, hint }` body; `/healthz` open.
   - Why: this is the transport apps and InstantBot will use. Stateless means any replica can serve any request.
   - Files: `src/transports/http.ts`, `test/http.test.ts`, `examples/curl-http.md`.
-  - Verify: supertest-style test posts an `initialize` and a `tools/list` and gets JSON back; a request without the server key gets 401. Manual: `npm run dev -- --http`, then the curl commands from `examples/curl-http.md`.
+  - Verify: `test/http.test.ts` (Node `fetch` against an ephemeral port, no new dependency) posts `initialize` and `tools/list` and gets JSON back; no key is 401; a `tools/call` with `X-Mail-Token` reaches the provider with that token; the same call without it is `AUTH_MISSING_TOKEN` even with `MAIL_TOKEN` in the env; logs carry the request id and never the token or key. Manual: start with the one-liner in `examples/curl-http.md` (the CLI `--http` flag is task 5.5), then run its curl commands.
 
 - [ ] **5.5 CLI `--http` and Dockerfile**
   - Build: `index.ts` wires `--http`, reads `PORT`. Multi-stage Dockerfile on `node:20-alpine`, non-root user, `HEALTHCHECK` on `/healthz`.

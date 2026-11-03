@@ -33,7 +33,7 @@ export interface Credentials {
 
 /** The slice of the SDK's handler `extra` we care about. */
 export interface RequestContext {
-  /** JSON-RPC id of the tool call, logged so one tool line can be matched to one client request. */
+  /** JSON-RPC id of the tool call, logged as `rpc_id` so one tool line can be matched to one client message. */
   requestId?: string | number;
   /** Present only when the call arrived over HTTP. Its presence selects the header path. */
   requestInfo?: {

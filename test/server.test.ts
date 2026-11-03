@@ -1440,7 +1440,7 @@ describe('collect_mail', () => {
 });
 
 describe('tool call logging (withMailbox)', () => {
-  it('writes one info line per successful call with tool, request id and duration', async () => {
+  it('writes one info line per successful call with tool, rpc id and duration', async () => {
     const log = captureLogger();
     const client = await connect(fakeDeps({ logger: log.logger }));
 
@@ -1450,7 +1450,7 @@ describe('tool call logging (withMailbox)', () => {
     const line = log.records()[0]!;
     expect(line).toMatchObject({ level: 'info', msg: 'tool', tool: 'get_mailbox_profile' });
     expect(typeof line['duration_ms']).toBe('number');
-    expect(line['request_id']).toBeDefined();
+    expect(line['rpc_id']).toBeDefined();
   });
 
   it('writes a warn line with the error code for a MailError and an error line for an unknown throw', async () => {

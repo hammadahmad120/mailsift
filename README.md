@@ -24,7 +24,9 @@ MAIL_TOKEN=<read-only Gmail access token> npm run dev            # stdio, for Cl
 npx @modelcontextprotocol/inspector -e MAIL_TOKEN=<token> npx tsx src/index.ts
 ```
 
-How to get a token and how to add the server to Claude Code: [examples/claude-code.md](examples/claude-code.md). The `--http` transport is not built yet. When it is, every HTTP request will carry its own `X-Mail-Token`; the env credentials above are for stdio only.
+How to get a token and how to add the server to Claude Code: [examples/claude-code.md](examples/claude-code.md).
+
+HTTP: `POST /mcp` with `Authorization: Bearer <server key>` and `X-Mail-Token: <access token>` on every request, plus an open `GET /healthz`. Stateless, plain JSON replies. The env credentials above are for stdio only; over HTTP the mailbox token always comes from the header. The CLI `--http` flag arrives in task 5.5; until then see [examples/curl-http.md](examples/curl-http.md) for how to start it and the curl commands.
 
 Logs are JSON lines on stderr, one per tool call (tool name, request id, duration, error code), never on stdout. Set `LOG_LEVEL` to `debug`, `info` (default), `warn` or `error`. Tokens and `Authorization` / `X-Mail-Token` values are redacted before anything is written.
 

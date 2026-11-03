@@ -12,7 +12,8 @@ import type { ServerDeps } from '../server.js';
  *   3. build a provider for this call only, carrying the verified scopes
  *   4. run the tool's own logic
  *   5. any throw becomes a structured `{ code, message, hint }` tool error
- *   6. one log line: tool, request id, duration, and the error code if any
+ *   6. one log line: tool, JSON-RPC id (`rpc_id`), duration, and the error code if any.
+ *      Over HTTP the logger is a per-request child that adds `request_id` on its own.
  *
  * A tool handler is therefore: `withMailbox(deps, 'tool_name', extra, async (provider) => ...)`.
  */
@@ -23,7 +24,7 @@ export async function withMailbox(
   fn: (provider: MailProvider) => Promise<CallToolResult>,
 ): Promise<CallToolResult> {
   const started = Date.now();
-  const fields = { tool, request_id: extra?.requestId };
+  const fields = { tool, rpc_id: extra?.requestId };
 
   try {
     const credentials = await deps.resolveCredentials(extra);
