@@ -21,7 +21,20 @@ describe('loadConfig', () => {
     expect(config.provider).toBe('gmail');
     expect(config.logLevel).toBe('info');
     expect(config.http.port).toBe(3000);
+    expect(config.http.host).toBe('0.0.0.0');
     expect(config.http.serverKeys).toEqual([]);
+  });
+
+  it('accepts PORT 0 (any free port) and rejects out-of-range ports', () => {
+    expect(loadConfig({ PORT: '0' }).http.port).toBe(0);
+    expect(() => loadConfig({ PORT: '-1' })).toThrow(ConfigError);
+    expect(() => loadConfig({ PORT: '70000' })).toThrow(ConfigError);
+  });
+
+  it('reads HOST and rejects a blank one', () => {
+    expect(loadConfig({ HOST: '127.0.0.1' }).http.host).toBe('127.0.0.1');
+    expect(loadConfig({ HOST: ' ::1 ' }).http.host).toBe('::1');
+    expect(() => loadConfig({ HOST: '  ' })).toThrow(ConfigError);
   });
 
   it('reads LOG_LEVEL and rejects unknown levels', () => {

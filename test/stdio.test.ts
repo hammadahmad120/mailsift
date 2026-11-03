@@ -107,11 +107,67 @@ describe('main --stdio', () => {
 });
 
 describe('main --http', () => {
-  it('exits with code 1 and a not-yet message', async () => {
+  it('refuses to start without MCP_SERVER_KEYS, naming the variable, exit code 1', async () => {
     const logs: string[] = [];
-    const code = await main(['--http'], { env: {}, log: (l) => logs.push(l) });
+    const code = await main(['--http'], { env: { PORT: '0' }, log: (l) => logs.push(l) });
     expect(code).toBe(1);
     expect(JSON.parse(logs[0]!)).toMatchObject({ level: 'error', transport: 'http' });
-    expect(logs[0]).toContain('--http is not implemented yet');
+    expect(logs[0]).toContain('MCP_SERVER_KEYS');
+  });
+
+  it('binds HOST:PORT, serves /healthz, and closes on abort', async () => {
+    const logs: string[] = [];
+    const controller = new AbortController();
+    let bound: { host: string; port: number } | undefined;
+
+    const code = await main(['--http'], {
+      env: { MCP_SERVER_KEYS: 'k', PORT: '0', HOST: '127.0.0.1', LOG_LEVEL: 'debug' },
+      log: (l) => logs.push(l),
+      signal: controller.signal,
+      onListening: (address) => {
+        bound = address;
+      },
+    });
+
+    expect(code).toBe(0);
+    expect(bound?.host).toBe('127.0.0.1');
+    expect(bound?.port).toBeGreaterThan(0);
+    expect(JSON.parse(logs[0]!)).toMatchObject({ msg: 'http server ready', host: '127.0.0.1' });
+
+    const res = await fetch(`http://127.0.0.1:${bound!.port}/healthz`);
+    expect(res.status).toBe(200);
+    await res.json();
+
+    controller.abort();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(logs.some((l) => l.includes('http server stopping'))).toBe(true);
+    await expect(fetch(`http://127.0.0.1:${bound!.port}/healthz`)).rejects.toThrow();
+  });
+
+  it('reports a bind failure with exit code 1 and no stack to the log', async () => {
+    const logs: string[] = [];
+    const controller = new AbortController();
+    let bound: { host: string; port: number } | undefined;
+    const first = await main(['--http'], {
+      env: { MCP_SERVER_KEYS: 'k', PORT: '0', HOST: '127.0.0.1' },
+      log: () => undefined,
+      signal: controller.signal,
+      onListening: (a) => {
+        bound = a;
+      },
+    });
+    expect(first).toBe(0);
+
+    const second = await main(['--http'], {
+      env: { MCP_SERVER_KEYS: 'k', PORT: String(bound!.port), HOST: '127.0.0.1' },
+      log: (l) => logs.push(l),
+    });
+    controller.abort();
+
+    expect(second).toBe(1);
+    const line = JSON.parse(logs[0]!) as { msg: string; error?: { code?: string } };
+    expect(line.msg).toBe('Failed to start.');
+    expect(line.error?.code).toBe('EADDRINUSE');
+    expect(logs[0]).not.toContain('    at ');
   });
 });

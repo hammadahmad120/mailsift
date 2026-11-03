@@ -1,0 +1,19 @@
+# Only package files, tsconfig, tsup config and src reach the build stage (see Dockerfile COPY lines),
+# but keep the context small and secrets out regardless.
+node_modules
+dist
+coverage
+.env
+.env.*
+!.env.example
+.git
+.github
+.vscode
+.idea
+.claude
+docs
+test
+examples
+*.md
+*.tgz
+*.log

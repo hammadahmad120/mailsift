@@ -39,7 +39,10 @@ const envSchema = z.object({
 
   // --- http transport (brief section 6) ---
   MCP_SERVER_KEYS: optionalString,
-  PORT: positiveInt(3000),
+  // 0 means "any free port" (tests, local scripts); `main` reports the bound port through onListening.
+  PORT: z.coerce.number().int().min(0).max(65535).default(3000),
+  // 0.0.0.0 for containers. Set 127.0.0.1 to keep a laptop run off the local network.
+  HOST: z.string().trim().min(1).default('0.0.0.0'),
 
   // --- logging (brief section 7, point 6) ---
   LOG_LEVEL: z.enum(LOG_LEVELS).default('info'),
@@ -65,6 +68,8 @@ export interface Config {
   readonly logLevel: LogLevel;
   readonly http: {
     readonly port: number;
+    /** Interface to bind. Default `0.0.0.0`. */
+    readonly host: string;
     /** Parsed from comma-separated MCP_SERVER_KEYS. Empty when unset. */
     readonly serverKeys: readonly string[];
   };
@@ -109,6 +114,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     logLevel: e.LOG_LEVEL,
     http: Object.freeze({
       port: e.PORT,
+      host: e.HOST,
       serverKeys: Object.freeze(serverKeys),
     }),
   });

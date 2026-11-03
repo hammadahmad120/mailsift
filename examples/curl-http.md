@@ -13,10 +13,25 @@ MCP requires `Accept: application/json, text/event-stream` on every POST. mailsi
 
 ## Start the server
 
-Until task 5.5 wires `--http` into the CLI, start it from the repo root with:
+From the repo root, in development:
 
 ```
-MCP_SERVER_KEYS=dev-key PORT=3000 npx tsx -e "import {createDefaultDeps} from './src/server.ts'; import {runHttp} from './src/transports/http.ts'; const d=createDefaultDeps(); runHttp(d,{port:d.config.http.port})"
+MCP_SERVER_KEYS=dev-key PORT=3000 HOST=127.0.0.1 npm run dev -- --http
+```
+
+After `npm run build`, or from the npm package:
+
+```
+MCP_SERVER_KEYS=dev-key node dist/index.js --http
+```
+
+`HOST` defaults to `0.0.0.0`, which is right for a container and reachable from your local network on a laptop; `127.0.0.1` keeps it local. Ctrl-C or `SIGTERM` stops it after in-flight requests finish.
+
+With Docker:
+
+```
+docker build -t mailsift .
+docker run --rm -e MCP_SERVER_KEYS=dev-key -p 3000:3000 mailsift
 ```
 
 ## Health, no credentials

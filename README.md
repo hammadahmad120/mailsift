@@ -26,7 +26,15 @@ npx @modelcontextprotocol/inspector -e MAIL_TOKEN=<token> npx tsx src/index.ts
 
 How to get a token and how to add the server to Claude Code: [examples/claude-code.md](examples/claude-code.md).
 
-HTTP: `POST /mcp` with `Authorization: Bearer <server key>` and `X-Mail-Token: <access token>` on every request, plus an open `GET /healthz`. Stateless, plain JSON replies. The env credentials above are for stdio only; over HTTP the mailbox token always comes from the header. The CLI `--http` flag arrives in task 5.5; until then see [examples/curl-http.md](examples/curl-http.md) for how to start it and the curl commands.
+HTTP:
+
+```
+MCP_SERVER_KEYS=<key>[,<key>] PORT=3000 HOST=127.0.0.1 npm run dev -- --http   # development
+MCP_SERVER_KEYS=<key> node dist/index.js --http                               # after npm run build
+docker build -t mailsift . && docker run -e MCP_SERVER_KEYS=<key> -p 3000:3000 mailsift
+```
+
+`POST /mcp` with `Authorization: Bearer <server key>` and `X-Mail-Token: <access token>` on every request, plus an open `GET /healthz`. Stateless, plain JSON replies, `SIGTERM` stops it cleanly. The env credentials above are for stdio only; over HTTP the mailbox token always comes from the header. `HOST` defaults to `0.0.0.0`. Generate a key with `openssl rand -hex 32`. curl walkthrough: [examples/curl-http.md](examples/curl-http.md).
 
 Logs are JSON lines on stderr, one per tool call (tool name, request id, duration, error code), never on stdout. Set `LOG_LEVEL` to `debug`, `info` (default), `warn` or `error`. Tokens and `Authorization` / `X-Mail-Token` values are redacted before anything is written.
 
