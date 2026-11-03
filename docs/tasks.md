@@ -251,10 +251,10 @@ Goal: a complete MCP server and a repo someone else can use.
   - Files: `src/resources/profile.ts`, `src/resources/search-syntax.ts`, `src/tools/with-mailbox.ts`, `src/errors.ts`, `test/resources.test.ts`.
   - Verify: in-memory client `listResources()` and `readResource()`. Inspector shows both under Resources: `mail://search-syntax` renders the markdown with no token; `mail://profile` shows the mailbox JSON with a token and a structured error without one.
 
-- [ ] **6.2 Resource templates**
-  - Build: `mail://message/{message_id}` and `mail://thread/{thread_id}` rendering a `Document` as markdown.
+- [x] **6.2 Resource templates** (verified 2026-11-03)
+  - Build: `mail://message/{message_id}` and `mail://thread/{thread_id}` rendering a `Document` as markdown. Pure renderer `documentToMarkdown` / `threadToMarkdown` in `src/parse/markdown.ts`. Attachments listed only (one provider read per resource), body capped at `MAX_MESSAGE_CHARS`, no `list` callback.
   - Why: templates are parameterised resources. A client can "open" an email by URI.
-  - Files: `src/resources/message.ts`, `src/resources/thread.ts`.
+  - Files: `src/parse/markdown.ts`, `src/resources/message.ts`, `src/resources/thread.ts`, `src/resources/variables.ts`.
   - Verify: Inspector lets you type a message id into the template and shows markdown.
 
 - [ ] **6.3 Prompts**

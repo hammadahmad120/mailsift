@@ -52,12 +52,17 @@ Logs are JSON lines on stderr, never stdout: one per HTTP request (`request_id`,
 
 ## Resources
 
-Two documents a client can list and open without calling a tool:
+Two fixed documents a client can list and open without calling a tool:
 
 - `mail://profile`: the connected mailbox, same JSON as `get_mailbox_profile`. Needs the mailbox credentials.
 - `mail://search-syntax`: markdown explaining every `search_mail` and `collect_mail` filter, the Gmail syntax it becomes, the rules, and six worked examples. Generated from the query builder, so it always matches the code. Read it before writing a query. Needs no credentials.
 
-In MCP Inspector they appear under **Resources**. A resource read that fails returns a JSON-RPC error whose `data` holds the same `{ code, message, hint }` body the tools use.
+Two templates a client fills in with an id from a `search_mail` result:
+
+- `mail://message/{message_id}`: one email as markdown. Subject as the title, then from, to, cc, date, ids and link, the clean body (quoted replies and signatures removed), and the attachment list with type and size. Attachments are listed, not extracted; use `get_email` with `attachments: "text"` for that. Body capped at `MAX_MESSAGE_CHARS`.
+- `mail://thread/{thread_id}`: the whole conversation as one markdown page, oldest message first, one numbered section per message with its headers, body and attachments. Each body capped at `MAX_MESSAGE_CHARS`.
+
+In MCP Inspector the first two appear under **Resources** and the templates under **Resource Templates**, where you type the id. A resource read that fails returns a JSON-RPC error whose `data` holds the same `{ code, message, hint }` body the tools use.
 
 ## Tools
 

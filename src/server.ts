@@ -9,8 +9,10 @@ import { createGmailClient } from './providers/gmail/client.js';
 import { createLogger, type Logger } from './logging.js';
 import { GmailProvider } from './providers/gmail/provider.js';
 import type { MailProvider } from './providers/types.js';
+import { registerMessageResource } from './resources/message.js';
 import { registerProfileResource } from './resources/profile.js';
 import { registerSearchSyntaxResource } from './resources/search-syntax.js';
+import { registerThreadResource } from './resources/thread.js';
 import { registerCollectMail } from './tools/collect-mail.js';
 import { registerGetAttachmentFile } from './tools/get-attachment-file.js';
 import { registerGetAttachmentText } from './tools/get-attachment-text.js';
@@ -78,6 +80,7 @@ export function createServer(deps: ServerDeps): McpServer {
       'get_attachment_file to download an attachment as sent, ' +
       'or collect_mail to get every matching message as a clean document in one call. ' +
       'Read the mail://search-syntax resource before writing filters. ' +
+      'A message or thread can also be opened as markdown at mail://message/{message_id} or mail://thread/{thread_id}. ' +
       'No tool can send, modify, label, or delete mail.',
   });
 
@@ -90,6 +93,8 @@ export function createServer(deps: ServerDeps): McpServer {
 
   registerProfileResource(server, deps);
   registerSearchSyntaxResource(server, deps);
+  registerMessageResource(server, deps);
+  registerThreadResource(server, deps);
 
   return server;
 }

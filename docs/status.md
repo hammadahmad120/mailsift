@@ -19,7 +19,7 @@ The phase-by-phase task breakdown with a verify step per task is in [tasks.md](t
 
 ## Current state of the code
 
-Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two transports, one provider. `npm run check` is green (321 tests, all offline).
+Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two resource templates, two transports, one provider. `npm run check` is green (334 tests, all offline).
 
 **Config, errors, logging**
 
@@ -44,7 +44,7 @@ Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two t
 
 **Parsing (`src/parse/`, all pure)**
 
-- `html-to-text.ts`, `quotes.ts` (`stripQuotes`, `stripSignature`, `normalizeWhitespace`, `cleanBody`), `thread.ts` (`flattenThread`, `bodyToText`), `document.ts` (`toDocument` building the brief section 9 shape, `truncate`), `attachments/` (`parseAttachment` dispatching to pdf via unpdf, docx via mammoth, text; never throws, `ATTACHMENT_UNSUPPORTED` / `PARSE_FAILED` as values).
+- `html-to-text.ts`, `quotes.ts` (`stripQuotes`, `stripSignature`, `normalizeWhitespace`, `cleanBody`), `thread.ts` (`flattenThread`, `bodyToText`), `document.ts` (`toDocument` building the brief section 9 shape, `truncate`), `markdown.ts` (`documentToMarkdown`, `threadToMarkdown`, `formatBytes`: the reading form of a Document for the resource templates), `attachments/` (`parseAttachment` dispatching to pdf via unpdf, docx via mammoth, text; never throws, `ATTACHMENT_UNSUPPORTED` / `PARSE_FAILED` as values).
 
 **Tools (`src/tools/`, one file each)**
 
@@ -70,6 +70,9 @@ Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two t
 
 - `profile.ts`: `mail://profile`, `application/json`, same data as the tool, read through `withMailboxOrThrow`.
 - `search-syntax.ts`: `mail://search-syntax`, `text/markdown`, pure `renderSearchSyntax({ maxRangeDays, now? })` rendered on every read: a table from `FIELD_DOCS` (eleven `SearchFilters` fields, type, Gmail syntax, notes), the rules (required field, range cap from config, spam and trash excluded, paging), six `EXAMPLES` whose Gmail query lines are produced by `buildQuery`. No credentials.
+- `message.ts`: template `mail://message/{message_id}`, `text/markdown`. One `getMessage`, `toDocument` with the server's `maxMessageChars`, attachments listed only, `documentToMarkdown`. No `list` callback.
+- `thread.ts`: template `mail://thread/{thread_id}`, `text/markdown`. One `getThread`, every message through `toDocument`, `threadToMarkdown` (oldest first, numbered sections).
+- `variables.ts`: `templateVariable(variables, name)`, one non-empty string out of a matched template or `NOT_FOUND`.
 
 **Placeholders**
 
@@ -90,4 +93,4 @@ Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two t
 
 ## Next step
 
-Task 6.2 in [tasks.md](tasks.md), resource templates: `mail://message/{message_id}` and `mail://thread/{thread_id}` rendering a `Document` as markdown.
+Task 6.3 in [tasks.md](tasks.md), prompts: `build_mail_query`, `collect_for_brief`, `explain_results`.
