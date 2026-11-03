@@ -9,6 +9,9 @@ import { createGmailClient } from './providers/gmail/client.js';
 import { createLogger, type Logger } from './logging.js';
 import { GmailProvider } from './providers/gmail/provider.js';
 import type { MailProvider } from './providers/types.js';
+import { registerBuildMailQuery } from './prompts/build-mail-query.js';
+import { registerCollectForBrief } from './prompts/collect-for-brief.js';
+import { registerExplainResults } from './prompts/explain-results.js';
 import { registerMessageResource } from './resources/message.js';
 import { registerProfileResource } from './resources/profile.js';
 import { registerSearchSyntaxResource } from './resources/search-syntax.js';
@@ -81,6 +84,7 @@ export function createServer(deps: ServerDeps): McpServer {
       'or collect_mail to get every matching message as a clean document in one call. ' +
       'Read the mail://search-syntax resource before writing filters. ' +
       'A message or thread can also be opened as markdown at mail://message/{message_id} or mail://thread/{thread_id}. ' +
+      'Prompts: build_mail_query turns a sentence into filters, collect_for_brief is the search, refine, collect workflow, explain_results summarises a collect_mail reply. ' +
       'No tool can send, modify, label, or delete mail.',
   });
 
@@ -95,6 +99,10 @@ export function createServer(deps: ServerDeps): McpServer {
   registerSearchSyntaxResource(server, deps);
   registerMessageResource(server, deps);
   registerThreadResource(server, deps);
+
+  registerBuildMailQuery(server, deps);
+  registerCollectForBrief(server, deps);
+  registerExplainResults(server);
 
   return server;
 }

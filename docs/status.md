@@ -19,7 +19,7 @@ The phase-by-phase task breakdown with a verify step per task is in [tasks.md](t
 
 ## Current state of the code
 
-Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two resource templates, two transports, one provider. `npm run check` is green (334 tests, all offline).
+Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two resource templates, three prompts, two transports, one provider. `npm run check` is green (344 tests, all offline).
 
 **Config, errors, logging**
 
@@ -74,9 +74,11 @@ Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two r
 - `thread.ts`: template `mail://thread/{thread_id}`, `text/markdown`. One `getThread`, every message through `toDocument`, `threadToMarkdown` (oldest first, numbered sections).
 - `variables.ts`: `templateVariable(variables, name)`, one non-empty string out of a matched template or `NOT_FOUND`.
 
-**Placeholders**
+**Prompts (`src/prompts/`, one file each, no mailbox access)**
 
-- `src/prompts/` holds only `.gitkeep`. Task 6.3.
+- `build-mail-query.ts`: `build_mail_query(request, today, default_window_days)`, all required strings. One user message: the request, today, the window, the eleven filter fields, "never invent a sender", range cap from config, "say what is missing".
+- `collect-for-brief.ts`: `collect_for_brief(brief, hints?)`. The workflow: read `mail://search-syntax`, `search_mail`, refine at most `MAX_REFINEMENTS` (2) times (narrow over `MAX_COLLECT_MESSAGES`, widen under `MIN_USEFUL_RESULTS` (3)), `collect_mail` once, stop, report; still unsure after two: report and ask one question.
+- `explain-results.ts`: `explain_results()`, no arguments. Plain-words summary of the last `collect_mail` reply: found and returned counts, skipped grouped by reason, query used, one next step, under 150 words.
 
 **Manual checks done**
 
@@ -93,4 +95,4 @@ Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two r
 
 ## Next step
 
-Task 6.3 in [tasks.md](tasks.md), prompts: `build_mail_query`, `collect_for_brief`, `explain_results`.
+Task 6.4 in [tasks.md](tasks.md): README with the three worked examples and the manual verification walkthrough, plus `examples/agent-loop.md`.

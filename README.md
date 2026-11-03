@@ -2,7 +2,7 @@
 
 Your mailbox, as documents your AI can actually read. Read-only MCP server that searches mail and returns clean text with attachments extracted.
 
-> Status: early. Six tools (`get_mailbox_profile`, `search_mail`, `get_email`, `get_attachment_text`, `get_attachment_file`, `collect_mail`) over stdio and over HTTP. Bodies come out clean (HTML converted, quoted replies and signatures removed) and attachments can be returned as text or as the original file. Resources, prompts and the npm release are next. See [docs/status.md](docs/status.md) for the phase tracker and [docs/design-brief.md](docs/design-brief.md) for the full design.
+> Status: early. Six tools (`get_mailbox_profile`, `search_mail`, `get_email`, `get_attachment_text`, `get_attachment_file`, `collect_mail`) over stdio and over HTTP. Bodies come out clean (HTML converted, quoted replies and signatures removed) and attachments can be returned as text or as the original file. Resources and prompts are in; the npm release is next. See [docs/status.md](docs/status.md) for the phase tracker and [docs/design-brief.md](docs/design-brief.md) for the full design.
 
 ## Development
 
@@ -63,6 +63,18 @@ Two templates a client fills in with an id from a `search_mail` result:
 - `mail://thread/{thread_id}`: the whole conversation as one markdown page, oldest message first, one numbered section per message with its headers, body and attachments. Each body capped at `MAX_MESSAGE_CHARS`.
 
 In MCP Inspector the first two appear under **Resources** and the templates under **Resource Templates**, where you type the id. A resource read that fails returns a JSON-RPC error whose `data` holds the same `{ code, message, hint }` body the tools use.
+
+## Prompts
+
+Three instruction templates a client can fetch by name with the blanks filled in. The server returns text only; it never calls a model. In Claude Desktop or Claude Code they appear as slash commands. A backend fetches them with `prompts/get` so the workflow is defined once, next to the tools.
+
+| Prompt              | Arguments                                                     | What it tells the model                                                                                                                                                                                                          |
+| ------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `build_mail_query`  | `request`, `today` (`YYYY-MM-DD`), `default_window_days`      | Turn the sentence into `search_mail` filters. Read `mail://search-syntax`, prefer facts, never invent a sender, resolve dates from `today`, say in one sentence what is missing if there is nothing to filter on.                |
+| `collect_for_brief` | `brief`, `hints` (optional free text: subject, sender, dates) | The workflow: search, look at the count and subjects, refine at most twice (narrow over `MAX_COLLECT_MESSAGES`, widen under 3), `collect_mail` once, stop and report. Still unsure after two tries: report and ask one question. |
+| `explain_results`   | none                                                          | Describe the last `collect_mail` reply in plain words: how many found and returned, what was skipped and why, the query used, one next step.                                                                                     |
+
+The caps in the text come from this server's config, so the prompt always states the real limits.
 
 ## Tools
 

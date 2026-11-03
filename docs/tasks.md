@@ -257,10 +257,10 @@ Goal: a complete MCP server and a repo someone else can use.
   - Files: `src/parse/markdown.ts`, `src/resources/message.ts`, `src/resources/thread.ts`, `src/resources/variables.ts`.
   - Verify: Inspector lets you type a message id into the template and shows markdown.
 
-- [ ] **6.3 Prompts**
-  - Build: `build_mail_query`, `collect_for_brief`, `explain_results` exactly as brief section 12 describes.
+- [x] **6.3 Prompts** (verified 2026-11-03)
+  - Build: `build_mail_query`, `collect_for_brief`, `explain_results` exactly as brief section 12 describes. Each file has a pure `render*` plus `register*`; `hints` is one optional free-text string, `today` and `default_window_days` are required strings (MCP prompt arguments are strings); caps (`MAX_COLLECT_MESSAGES`, `MAX_RANGE_DAYS`) are read from config into the text.
   - Why: prompts are server-provided instructions. `collect_for_brief` is the workflow InstantBot's loop will follow.
-  - Files: `src/prompts/*.ts`, `test/prompts.test.ts`.
+  - Files: `src/prompts/build-mail-query.ts`, `src/prompts/collect-for-brief.ts`, `src/prompts/explain-results.ts`, `test/prompts.test.ts`.
   - Verify: `getPrompt()` test checks arguments are substituted. Manual: in Claude Code, use the prompt and watch it search, refine, collect, stop.
 
 - [ ] **6.4 README and examples**
