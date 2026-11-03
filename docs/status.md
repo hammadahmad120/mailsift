@@ -19,12 +19,12 @@ The phase-by-phase task breakdown with a verify step per task is in [tasks.md](t
 
 ## Current state of the code
 
-Phases 0 to 5 are complete. Six tools, two transports, one provider. `npm run check` is green (311 tests, all offline).
+Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two transports, one provider. `npm run check` is green (321 tests, all offline).
 
 **Config, errors, logging**
 
 - `src/config.ts`: `loadConfig(env)`, zod-validated, frozen. Limits from brief section 15 plus `MAX_SEARCH_IDS`, `LOG_LEVEL` (default `info`), `MCP_SERVER_KEYS`, `PORT` (0 allowed, any free port), `HOST` (default `0.0.0.0`). Secrets are never on the config object.
-- `src/errors.ts`: `MailError { code, message, hint }`, `toToolError`, `redactSecrets` (Google access and refresh tokens, client secrets, JWTs, `Bearer` values, `access_token=` / `refresh_token=` params).
+- `src/errors.ts`: `MailError { code, message, hint }`, `toToolError` (tools), `toMcpError` (resources and prompts: a JSON-RPC error with the structured body in `data`, `NOT_FOUND` as invalid params, the rest as internal error), `redactSecrets` (Google access and refresh tokens, client secrets, JWTs, `Bearer` values, `access_token=` / `refresh_token=` params).
 - `src/logging.ts`: `createLogger({ level, sink, now })`, one JSON object per line on stderr; `child(fields)`; `silentLogger()`. `redactRecord` blanks secret field names (`authorization`, `x-mail-token`, `token`, `refresh_token`, `client_secret`, ...) and runs every other string through `redactSecrets`; Errors become `{ name, message, code? }`; cycles and depth over 8 are cut. The brief's no-token-in-logs test is `test/logging.test.ts`.
 
 **Auth (`src/auth/`)**
@@ -48,7 +48,7 @@ Phases 0 to 5 are complete. Six tools, two transports, one provider. `npm run ch
 
 **Tools (`src/tools/`, one file each)**
 
-- `with-mailbox.ts`: `withMailbox(deps, tool, extra, fn)`: credentials -> scope check -> provider -> `fn` -> `toToolError`, plus one log line per call (`tool`, `rpc_id`, `duration_ms`, `code` on failure; `request_id` comes from the HTTP layer's child logger).
+- `with-mailbox.ts`: `withMailboxOrThrow(deps, name, extra, fn)` is the core: credentials -> scope check -> provider -> `fn`, one log line per call (`tool`, `rpc_id`, `duration_ms`, `code` on failure; `request_id` comes from the HTTP layer's child logger), any throw rethrown as `McpError`. `withMailbox` wraps it for tools and turns the throw into a structured tool error. Resources call the core directly.
 - `get-mailbox-profile.ts`, `search-mail.ts`, `get-email.ts` (thread and attachment text options), `get-attachment-text.ts`, `get-attachment-file.ts` (original bytes as an embedded resource under `mail://attachment/{message_id}/{filename}`), `collect-mail.ts` (`collectMail` core: id walk with `order`, `pLimit` fetches, caps, `skipped`, `stats`).
 - Helpers: `attachment-texts.ts`, `args.ts` (blank optional strings dropped), `result.ts` (`toolResult`, the two-block reply).
 - `src/util/concurrency.ts`: `pLimit`.
@@ -66,9 +66,14 @@ Phases 0 to 5 are complete. Six tools, two transports, one provider. `npm run ch
 - `examples/claude-code.md` (token from OAuth Playground, Inspector, Claude Code `.mcp.json`), `examples/curl-http.md` (start commands, the four headers, curl for initialize, tools/list, tools/call, failure table, logs).
 - `package.json` has `dev:env` (`node --env-file=.env --import tsx src/index.ts`) for local runs from a `.env`.
 
+**Resources (`src/resources/`, one file each)**
+
+- `profile.ts`: `mail://profile`, `application/json`, same data as the tool, read through `withMailboxOrThrow`.
+- `search-syntax.ts`: `mail://search-syntax`, `text/markdown`, pure `renderSearchSyntax({ maxRangeDays, now? })` rendered on every read: a table from `FIELD_DOCS` (eleven `SearchFilters` fields, type, Gmail syntax, notes), the rules (required field, range cap from config, spam and trash excluded, paging), six `EXAMPLES` whose Gmail query lines are produced by `buildQuery`. No credentials.
+
 **Placeholders**
 
-- `src/resources/` and `src/prompts/` hold only `.gitkeep`. Phase 6.
+- `src/prompts/` holds only `.gitkeep`. Task 6.3.
 
 **Manual checks done**
 
@@ -85,4 +90,4 @@ Phases 0 to 5 are complete. Six tools, two transports, one provider. `npm run ch
 
 ## Next step
 
-Phase 6 starts with task 6.1 in [tasks.md](tasks.md), static resources: `mail://profile` (same data as the tool) and `mail://search-syntax` (markdown generated from the query builder's field list with six examples), one file each under `src/resources/`, tested through the in-memory client's `listResources` and `readResource`. Then 6.2 resource templates, 6.3 prompts, 6.4 README with the three worked examples, 6.5 npm publish setup.
+Task 6.2 in [tasks.md](tasks.md), resource templates: `mail://message/{message_id}` and `mail://thread/{thread_id}` rendering a `Document` as markdown.

@@ -9,6 +9,8 @@ import { createGmailClient } from './providers/gmail/client.js';
 import { createLogger, type Logger } from './logging.js';
 import { GmailProvider } from './providers/gmail/provider.js';
 import type { MailProvider } from './providers/types.js';
+import { registerProfileResource } from './resources/profile.js';
+import { registerSearchSyntaxResource } from './resources/search-syntax.js';
 import { registerCollectMail } from './tools/collect-mail.js';
 import { registerGetAttachmentFile } from './tools/get-attachment-file.js';
 import { registerGetAttachmentText } from './tools/get-attachment-text.js';
@@ -75,6 +77,7 @@ export function createServer(deps: ServerDeps): McpServer {
       'get_attachment_text to read a pdf, docx or text attachment, ' +
       'get_attachment_file to download an attachment as sent, ' +
       'or collect_mail to get every matching message as a clean document in one call. ' +
+      'Read the mail://search-syntax resource before writing filters. ' +
       'No tool can send, modify, label, or delete mail.',
   });
 
@@ -84,6 +87,9 @@ export function createServer(deps: ServerDeps): McpServer {
   registerGetAttachmentText(server, deps);
   registerGetAttachmentFile(server, deps);
   registerCollectMail(server, deps);
+
+  registerProfileResource(server, deps);
+  registerSearchSyntaxResource(server, deps);
 
   return server;
 }

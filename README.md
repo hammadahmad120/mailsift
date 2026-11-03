@@ -50,6 +50,15 @@ docker build -t mailsift . && docker run -e MCP_SERVER_KEYS=<key> -p 3000:3000 m
 
 Logs are JSON lines on stderr, never stdout: one per HTTP request (`request_id`, method, path, status, duration) and one per tool call (tool, `rpc_id`, duration, error code), sharing the `request_id` that is also returned in the `X-Request-Id` header. Tokens, keys and `Authorization` / `X-Mail-Token` values are redacted before anything is written.
 
+## Resources
+
+Two documents a client can list and open without calling a tool:
+
+- `mail://profile`: the connected mailbox, same JSON as `get_mailbox_profile`. Needs the mailbox credentials.
+- `mail://search-syntax`: markdown explaining every `search_mail` and `collect_mail` filter, the Gmail syntax it becomes, the rules, and six worked examples. Generated from the query builder, so it always matches the code. Read it before writing a query. Needs no credentials.
+
+In MCP Inspector they appear under **Resources**. A resource read that fails returns a JSON-RPC error whose `data` holds the same `{ code, message, hint }` body the tools use.
+
 ## Tools
 
 | Tool                  | What it does                                                                                                                                                                                                                                                                                                                                                                    |

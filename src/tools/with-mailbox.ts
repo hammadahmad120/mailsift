@@ -1,30 +1,32 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { RequestContext } from '../auth/credentials.js';
-import { isMailError, toToolError } from '../errors.js';
+import { isMailError, toMcpError, toToolError } from '../errors.js';
 import type { MailProvider } from '../providers/types.js';
 import type { ServerDeps } from '../server.js';
 
 /**
- * The per-call sequence every tool runs, in one place so no tool can skip a step:
+ * The per-call sequence every tool, resource and prompt that touches a mailbox runs,
+ * in one place so none of them can skip a step:
  *
- *   1. resolve credentials (env now, headers in phase 5)
+ *   1. resolve credentials (env over stdio, headers over HTTP)
  *   2. scope check: refuse any token that could write (brief section 7, layer 3)
  *   3. build a provider for this call only, carrying the verified scopes
- *   4. run the tool's own logic
- *   5. any throw becomes a structured `{ code, message, hint }` tool error
- *   6. one log line: tool, JSON-RPC id (`rpc_id`), duration, and the error code if any.
+ *   4. run the handler's own logic
+ *   5. one log line: name, JSON-RPC id (`rpc_id`), duration, and the error code if any.
  *      Over HTTP the logger is a per-request child that adds `request_id` on its own.
  *
- * A tool handler is therefore: `withMailbox(deps, 'tool_name', extra, async (provider) => ...)`.
+ * Tools: `withMailbox(deps, 'tool_name', extra, fn)` turns any throw into a structured tool error.
+ * Resources: `withMailboxOrThrow(deps, 'resource_name', extra, fn)` rethrows it as an `McpError`,
+ * because a resource read has no `isError` result shape.
  */
-export async function withMailbox(
+export async function withMailboxOrThrow<T>(
   deps: ServerDeps,
-  tool: string,
+  name: string,
   extra: RequestContext | undefined,
-  fn: (provider: MailProvider) => Promise<CallToolResult>,
-): Promise<CallToolResult> {
+  fn: (provider: MailProvider) => Promise<T>,
+): Promise<T> {
   const started = Date.now();
-  const fields = { tool, rpc_id: extra?.requestId };
+  const fields = { tool: name, rpc_id: extra?.requestId };
 
   try {
     const credentials = await deps.resolveCredentials(extra);
@@ -40,6 +42,19 @@ export async function withMailbox(
     } else {
       deps.logger.error('tool', { ...fields, duration_ms, code: 'PROVIDER_ERROR', error: err });
     }
+    throw toMcpError(err);
+  }
+}
+
+export async function withMailbox(
+  deps: ServerDeps,
+  tool: string,
+  extra: RequestContext | undefined,
+  fn: (provider: MailProvider) => Promise<CallToolResult>,
+): Promise<CallToolResult> {
+  try {
+    return await withMailboxOrThrow(deps, tool, extra, fn);
+  } catch (err) {
     return toToolError(err);
   }
 }

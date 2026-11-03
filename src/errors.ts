@@ -1,3 +1,4 @@
+import { ErrorCode as RpcErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 /** Error codes from the design brief, section 10. */
@@ -60,6 +61,13 @@ export function isMailError(err: unknown): err is MailError {
   return err instanceof MailError;
 }
 
+/** An `McpError` produced by `toMcpError`, carrying the structured body in `data`. */
+function isMcpErrorWithBody(err: unknown): err is McpError & { data: ToolErrorBody } {
+  if (!(err instanceof McpError) || typeof err.data !== 'object' || err.data === null) return false;
+  const data = err.data as Partial<ToolErrorBody>;
+  return typeof data.code === 'string' && typeof data.message === 'string';
+}
+
 /**
  * Replaces every known credential shape inside a string.
  * Used on error messages here and on every string the logger writes (`src/logging.ts`).
@@ -86,10 +94,27 @@ export function redactSecrets(text: string): string {
 export function toToolError(err: unknown): CallToolResult {
   const body: ToolErrorBody = isMailError(err)
     ? err.toBody()
-    : { code: 'PROVIDER_ERROR', message: 'Unexpected error while talking to the mail provider.' };
+    : isMcpErrorWithBody(err)
+      ? err.data
+      : { code: 'PROVIDER_ERROR', message: 'Unexpected error while talking to the mail provider.' };
 
   return {
     isError: true,
     content: [{ type: 'text', text: JSON.stringify(body) }],
   };
+}
+
+/**
+ * Resource and prompt handlers have no `isError` result shape: a failure there is a JSON-RPC
+ * error. This keeps the brief's `{ code, message, hint }` body in the error's `data` and puts
+ * `CODE: message` in the text, so a client still sees the structured error.
+ */
+export function toMcpError(err: unknown): McpError {
+  if (err instanceof McpError) return err;
+  const body: ToolErrorBody = isMailError(err)
+    ? err.toBody()
+    : { code: 'PROVIDER_ERROR', message: 'Unexpected error while talking to the mail provider.' };
+  const rpcCode =
+    body.code === 'NOT_FOUND' ? RpcErrorCode.InvalidParams : RpcErrorCode.InternalError;
+  return new McpError(rpcCode, `${body.code}: ${body.message}`, body);
 }

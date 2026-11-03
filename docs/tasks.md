@@ -245,11 +245,11 @@ Goal: the same server reachable over a URL with two headers, safe to run in Dock
 
 Goal: a complete MCP server and a repo someone else can use.
 
-- [ ] **6.1 Static resources**
-  - Build: `mail://profile` (same as the tool) and `mail://search-syntax` (markdown generated from the query builder's field list, six examples).
+- [x] **6.1 Static resources** (verified 2026-11-03)
+  - Build: `mail://profile` (same as the tool) and `mail://search-syntax` (markdown generated from the query builder's field list, six examples). As built: `registerProfileResource` reads through `withMailboxOrThrow`, the new throwing core that `withMailbox` now wraps, so a failed read is a JSON-RPC error carrying the `{ code, message, hint }` body (`toMcpError` in `errors.ts`). `renderSearchSyntax({ maxRangeDays })` is pure, rendered on every read, with `FIELD_DOCS` (one row per `SearchFilters` field) and six `EXAMPLES` whose Gmail queries come from the real `buildQuery`.
   - Why: resources are how a model reads reference material without calling a tool. The syntax resource lets a model write good queries without guessing.
-  - Files: `src/resources/profile.ts`, `src/resources/search-syntax.ts`, `test/resources.test.ts`.
-  - Verify: in-memory client `listResources()` and `readResource()`. Inspector shows both under Resources.
+  - Files: `src/resources/profile.ts`, `src/resources/search-syntax.ts`, `src/tools/with-mailbox.ts`, `src/errors.ts`, `test/resources.test.ts`.
+  - Verify: in-memory client `listResources()` and `readResource()`. Inspector shows both under Resources: `mail://search-syntax` renders the markdown with no token; `mail://profile` shows the mailbox JSON with a token and a structured error without one.
 
 - [ ] **6.2 Resource templates**
   - Build: `mail://message/{message_id}` and `mail://thread/{thread_id}` rendering a `Document` as markdown.
