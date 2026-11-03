@@ -389,8 +389,9 @@ mailsift/
 | `GMAIL_TIMEOUT_MS`     | 20000    |
 | `SCOPE_CACHE_TTL_MS`   | 600000   |
 | `LOG_LEVEL`            | info     |
+| `HOST`                 | 0.0.0.0  |
 
-`LOG_LEVEL` is one of `debug`, `info`, `warn`, `error` (added 2026-11-02, see decisions.md).
+`LOG_LEVEL` is one of `debug`, `info`, `warn`, `error` (added 2026-11-02, see decisions.md). `HOST` is the interface the HTTP transport binds; `PORT` (section 6) accepts 0 for any free port (added 2026-11-03, see decisions.md).
 
 ## 16. Testing and verification
 

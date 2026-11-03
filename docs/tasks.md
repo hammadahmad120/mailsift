@@ -232,12 +232,12 @@ Goal: the same server reachable over a URL with two headers, safe to run in Dock
   - Files: `src/transports/http.ts`, `test/http.test.ts`, `examples/curl-http.md`.
   - Verify: `test/http.test.ts` (Node `fetch` against an ephemeral port, no new dependency) posts `initialize` and `tools/list` and gets JSON back; no key is 401; a `tools/call` with `X-Mail-Token` reaches the provider with that token; the same call without it is `AUTH_MISSING_TOKEN` even with `MAIL_TOKEN` in the env; logs carry the request id and never the token or key. Manual: start with the one-liner in `examples/curl-http.md` (the CLI `--http` flag is task 5.5), then run its curl commands.
 
-- [ ] **5.5 CLI `--http` and Dockerfile** (built 2026-11-03, awaiting verify)
+- [x] **5.5 CLI `--http` and Dockerfile** (verified 2026-11-03 over HTTP with Postman; `docker build` still pending a machine with Docker)
   - Build: `index.ts` wires `--http`, reads `PORT`. Multi-stage Dockerfile on `node:20-alpine`, non-root user, `HEALTHCHECK` on `/healthz`. As built: `main(['--http'])` builds deps, calls `runHttp` with `HOST` (new env var, default `0.0.0.0`) and `PORT` (0 now allowed, meaning any free port), resolves 0 once bound, and closes the listener when `options.signal` aborts; the direct-run guard wires `SIGTERM`/`SIGINT` to that signal. Bind failures and empty `MCP_SERVER_KEYS` are one JSON error line and exit code 1. Dockerfile: build stage runs `npm ci` and `npm run build`, runtime stage has `npm ci --omit=dev` plus `dist`, `USER node`, `EXPOSE 3000`, `HEALTHCHECK` through `node -e fetch(...)`, `CMD node dist/index.js --http`. `.dockerignore` keeps `node_modules`, `.env*`, docs and tests out.
   - Files: `src/index.ts`, `src/config.ts`, `test/stdio.test.ts`, `test/config.test.ts`, `Dockerfile`, `.dockerignore`.
   - Verify: `npm run check` green; `MCP_SERVER_KEYS=dev-key npm run dev -- --http` then the curl commands in `examples/curl-http.md` (this is also the deferred 5.4 manual check); Ctrl-C stops it with an `http server stopping` line. On a machine with Docker: `docker build -t mailsift .` then `docker run -e MCP_SERVER_KEYS=dev -p 3000:3000 mailsift` and curl `/healthz`.
 
-- [ ] **5.6 Phase 5 docs sync**
+- [x] **5.6 Phase 5 docs sync** (2026-11-03)
 
 ---
 
