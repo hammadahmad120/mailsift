@@ -95,4 +95,4 @@ Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two r
 
 ## Next step
 
-Task 6.5 in [tasks.md](tasks.md): npm publish setup (`prepublishOnly`, `files` whitelist, GitHub Actions).
+Task 6.5 (npm publish setup) is deferred by the user on 2026-11-03 until an npm account exists; the README's `npx mailsift` lines assume it. Task 6.6 (release tag) depends on it. Open items on the MCP side are listed under Known issues.
