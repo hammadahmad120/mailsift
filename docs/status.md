@@ -63,7 +63,7 @@ Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two r
 
 **Docs and examples**
 
-- `examples/claude-code.md` (token from OAuth Playground, Inspector, Claude Code `.mcp.json`), `examples/curl-http.md` (start commands, the four headers, curl for initialize, tools/list, tools/call, failure table, logs).
+- `examples/claude-code.md` (token from OAuth Playground, Inspector, Claude Code `.mcp.json`), `examples/curl-http.md` (start commands, the four headers, curl for initialize, tools/list, tools/call, failure table, logs), `examples/agent-loop.md` (backend loop: MCP SDK client over HTTP with both headers, tools wrapped for the Vercel AI SDK, `collect_for_brief` fetched by name, `stepCountIs` cap, token minting from a refresh token, failure table).
 - `package.json` has `dev:env` (`node --env-file=.env --import tsx src/index.ts`) for local runs from a `.env`.
 
 **Resources (`src/resources/`, one file each)**
@@ -95,4 +95,4 @@ Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two r
 
 ## Next step
 
-Task 6.4 in [tasks.md](tasks.md): README with the three worked examples and the manual verification walkthrough, plus `examples/agent-loop.md`.
+Task 6.5 in [tasks.md](tasks.md): npm publish setup (`prepublishOnly`, `files` whitelist, GitHub Actions).

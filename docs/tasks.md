@@ -263,8 +263,8 @@ Goal: a complete MCP server and a repo someone else can use.
   - Files: `src/prompts/build-mail-query.ts`, `src/prompts/collect-for-brief.ts`, `src/prompts/explain-results.ts`, `test/prompts.test.ts`.
   - Verify: `getPrompt()` test checks arguments are substituted. Manual: in Claude Code, use the prompt and watch it search, refine, collect, stop.
 
-- [ ] **6.4 README and examples**
-  - Build: README with install, the read-only scope instruction, both transports, all env vars, every tool with a short example, the three worked examples (resumes against a job description, high priority complaints last week, invoices from one supplier this quarter), and the manual verification walkthrough. `examples/agent-loop.md` with a minimal Vercel AI SDK loop.
+- [x] **6.4 README and examples** (verified 2026-11-03)
+  - Build: README rewritten for a newcomer: pitch, five-minute quickstart, Claude Desktop/Code setup, HTTP setup, the read-only guarantees, tools, filters, the Document shape, the three worked examples (applications against a job description, high priority complaints last week, invoices from one supplier this quarter), resources, prompts, error table, every env var, the ten-step manual walkthrough. `examples/agent-loop.md`: Vercel AI SDK loop using the MCP SDK client directly for tools and the `collect_for_brief` prompt, token minting, failure table.
   - Verify: a reader who has never seen the repo can go from zero to a working `collect_mail` in Inspector following only the README.
 
 - [ ] **6.5 npm publish setup**
