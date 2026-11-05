@@ -128,14 +128,14 @@ Where the mail token comes from in this setup: your app holds the user's Google 
 
 ## Tools
 
-| Tool                  | What it does                                                                                                                                                                                                                                                                                                                          |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_mailbox_profile` | Connection test. Email address, message and thread counts, granted scopes, `read_only: true`.                                                                                                                                                                                                                                         |
-| `search_mail`         | Find messages. Metadata and links only, never bodies. Paged with `page_size` and `page_token`.                                                                                                                                                                                                                                        |
-| `get_email`           | One message as a Document: headers, clean body, attachment list, link. `include_thread: true` adds the whole conversation as `thread_text`. `attachments: "text"` extracts each attachment inline.                                                                                                                                    |
-| `get_attachment_text` | One attachment as text, by `message_id` plus `filename`. PDF, DOCX, TXT, MD, CSV, HTML. A file it cannot read comes back with a `skipped_reason`, not an error.                                                                                                                                                                       |
-| `get_attachment_file` | The original bytes of one attachment, base64 with its mime type, for apps that want the file as sent. Over `MAX_ATTACHMENT_BYTES` is refused.                                                                                                                                                                                         |
-| `collect_mail`        | Everything matching the filters as Documents in one call. Same filters as `search_mail`, plus `max_messages` (default 50, cap 200), `order` (`newest_first` or `oldest_first`), `include_thread`, `attachments` (`text` by default), `max_total_chars`. Replies with `documents`, `skipped` (what was left out and why), and `stats`. |
+| Tool                  | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_mailbox_profile` | Connection test. Email address, message and thread counts, granted scopes, `read_only: true`.                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `search_mail`         | Find messages. Metadata and links only, never bodies. Paged with `page_size` and `page_token`.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `get_email`           | One message as a Document: headers, clean body, attachment list, link. `include_thread: true` adds the whole conversation as `thread_text`. `attachments: "text"` extracts each attachment inline.                                                                                                                                                                                                                                                                                              |
+| `get_attachment_text` | One attachment as text, by `message_id` plus `filename`. PDF, DOCX, TXT, MD, CSV, HTML. A file it cannot read comes back with a `skipped_reason`, not an error.                                                                                                                                                                                                                                                                                                                                 |
+| `get_attachment_file` | The original bytes of one attachment, base64 with its mime type, for apps that want the file as sent. Over `MAX_ATTACHMENT_BYTES` is refused.                                                                                                                                                                                                                                                                                                                                                   |
+| `collect_mail`        | Everything matching the filters as Documents in one call. Same filters as `search_mail`, plus `max_messages` (default 50, cap 200), `order` (`newest_first` or `oldest_first`), `after_message_id` (continue after a previous batch), `include_thread`, `attachments` (`text` by default), `max_total_chars`. Replies with `documents`, `skipped` (what was left out and why), `stats`, and `next_after_message_id` (pass it back as `after_message_id` for the next batch; `null` at the end). |
 
 ### Filters
 
@@ -277,11 +277,14 @@ Reply shape:
     "attachments_returned": 13,
     "total_chars": 48210,
     "truncated": false
-  }
+  },
+  "next_after_message_id": null
 }
 ```
 
 `oldest_first` matters for a backlog: without it you get the newest 50 and the oldest invoice never arrives.
+
+To work through a long backlog in batches, add `max_messages: 20` and loop: each reply's `next_after_message_id` goes back in as `after_message_id`, with the same filters and order, until it comes back `null`. The bookmark is a message id, not an offset, so a mail deleted between two batches does not shift the rest. An unknown bookmark (the mail no longer matches) is a `NOT_FOUND` error.
 
 ## Resources
 

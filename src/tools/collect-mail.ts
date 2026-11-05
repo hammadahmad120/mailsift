@@ -13,6 +13,7 @@ import type {
 import type { ServerDeps } from '../server.js';
 import { pLimit } from '../util/concurrency.js';
 import { attachmentTexts } from './attachment-texts.js';
+import { optionalText, present } from './args.js';
 import { ATTACHMENT_MODES } from './get-email.js';
 import { toolResult } from './result.js';
 import { searchMailInput, toSearchCall } from './search-mail.js';
@@ -26,7 +27,9 @@ import { withMailbox } from './with-mailbox.js';
  * Shape of the work:
  *   1. page through message ids (cheap, nothing fetched) until `max_messages`
  *      or the end; `oldest_first` walks to the end (capped by MAX_SEARCH_IDS)
- *      and reverses;
+ *      and reverses; with `after_message_id` the batch starts right after
+ *      that id in the ordered list, and the reply names the last id of the
+ *      batch as `next_after_message_id` so the caller can continue;
  *   2. fetch and convert messages `FETCH_CONCURRENCY` at a time, same code as
  *      `get_email`, one failure skipping only that message;
  *   3. add documents in id order until `max_total_chars`; the rest, fetched or
@@ -59,6 +62,10 @@ export const collectMailInput = {
       '"newest_first" (default): the most recent matches, as the mailbox lists them. ' +
         '"oldest_first": the earliest matches, for working through a backlog in arrival order.',
     ),
+  after_message_id: optionalText(
+    'Start the batch right after this message in the chosen order, with the same filters. ' +
+      'Pass next_after_message_id from the previous reply to get the following batch.',
+  ),
   include_thread: z
     .boolean()
     .optional()
@@ -106,6 +113,8 @@ export interface CollectResult {
   documents: Document[];
   skipped: CollectSkipped[];
   stats: CollectStats;
+  /** Pass as `after_message_id` for the next batch; null when this batch reached the end. */
+  next_after_message_id: string | null;
 }
 
 export interface CollectLimits {
@@ -121,6 +130,8 @@ export interface CollectLimits {
 export interface CollectOptions {
   filters: SearchFilters;
   order: CollectOrder;
+  /** Batch starts right after this id in `order`. Must be among the matches. */
+  afterMessageId?: string;
   includeThread: boolean;
   attachments: (typeof ATTACHMENT_MODES)[number];
   limits: CollectLimits;
@@ -128,18 +139,34 @@ export interface CollectOptions {
 
 interface IdWalk {
   query_used: string;
+  /** The ids of this batch, in `order`. */
   ids: string[];
-  /** true when ids beyond `ids` exist that were not walked. */
+  /** true when matching ids exist that this batch does not cover. */
   more: boolean;
+  /** Last id of the batch when a following batch exists in `order`, else null. */
+  next: string | null;
+  /** Matching ids the walk saw, exact when it reached the end. */
+  walked: number;
   estimate: number;
 }
 
 /** Step 1: ids only. */
 async function walkIds(provider: MailProvider, options: CollectOptions): Promise<IdWalk> {
   const { maxMessages, maxSearchIds } = options.limits;
-  const wanted = options.order === 'newest_first' ? maxMessages : maxSearchIds;
+  const bookmark = options.afterMessageId;
   const ids: string[] = [];
-  let page = await provider.listMessageIds(options.filters, { page_size: wanted });
+
+  // How many ids the walk needs, given what it has seen so far. `oldest_first`
+  // walks to the end (it must reverse the whole list); `newest_first` stops at
+  // `max_messages`, or, with a bookmark, at `max_messages` past it.
+  const target = (): number => {
+    if (options.order === 'oldest_first') return maxSearchIds;
+    if (bookmark === undefined) return maxMessages;
+    const at = ids.indexOf(bookmark);
+    return at === -1 ? maxSearchIds : Math.min(at + 1 + maxMessages, maxSearchIds);
+  };
+
+  let page = await provider.listMessageIds(options.filters, { page_size: target() });
   const query_used = page.query_used;
   let estimate = page.result_size_estimate;
   let more = false;
@@ -147,6 +174,7 @@ async function walkIds(provider: MailProvider, options: CollectOptions): Promise
   for (;;) {
     estimate = Math.max(estimate, page.result_size_estimate);
     ids.push(...page.ids);
+    const wanted = target();
     if (ids.length >= wanted) {
       more = ids.length > wanted || page.next_page_token !== null;
       ids.length = wanted;
@@ -159,14 +187,38 @@ async function walkIds(provider: MailProvider, options: CollectOptions): Promise
     });
   }
 
-  if (options.order === 'oldest_first') {
-    ids.reverse();
-    if (ids.length > maxMessages) {
-      ids.length = maxMessages;
-      more = true;
+  const walked = ids.length;
+  if (options.order === 'oldest_first') ids.reverse();
+
+  // The bookmark: the batch starts right after it in the ordered list.
+  if (bookmark !== undefined) {
+    const at = ids.indexOf(bookmark);
+    if (at === -1) {
+      throw new MailError(
+        'NOT_FOUND',
+        `after_message_id ${bookmark} is not among the matching messages.`,
+        'Keep the same filters and order as the call that returned it, or run again without after_message_id.',
+      );
     }
+    ids.splice(0, at + 1);
   }
-  return { query_used, ids, more, estimate };
+
+  // The batch itself: `max_messages` ids, and whether a following batch exists.
+  // For `oldest_first`, ids the walk did not reach are older than the whole
+  // list, so a bookmark can never lead to them; only a cut by `max_messages`
+  // leaves a next batch.
+  const cut = ids.length > maxMessages;
+  if (cut) ids.length = maxMessages;
+  let next: string | null;
+  if (options.order === 'oldest_first') {
+    if (cut) more = true;
+    next = cut ? ids[ids.length - 1]! : null;
+  } else {
+    more = more || cut;
+    next = more && ids.length > 0 ? ids[ids.length - 1]! : null;
+  }
+
+  return { query_used, ids, more, next, walked, estimate };
 }
 
 function charsOf(document: Document): number {
@@ -281,12 +333,13 @@ export async function collectMail(
     documents,
     skipped,
     stats: {
-      messages_found: walk.more ? Math.max(walk.estimate, walk.ids.length) : walk.ids.length,
+      messages_found: walk.more ? Math.max(walk.estimate, walk.walked) : walk.walked,
       messages_returned: documents.length,
       attachments_returned,
       total_chars: total,
       truncated: walk.more || capped,
     },
+    next_after_message_id: walk.next,
   };
 }
 
@@ -302,6 +355,7 @@ export function registerCollectMail(server: McpServer, deps: ServerDeps): void {
         `Returns at most max_messages (default ${DEFAULT_MAX_MESSAGES}, cap ${limits.maxCollectMessages}) ` +
         `and stops adding documents at max_total_chars (default ${limits.maxTotalChars}). ` +
         'Use order "oldest_first" to work through a backlog from the start. ' +
+        "To continue in batches, pass the reply's next_after_message_id back as after_message_id with the same filters and order. " +
         'The reply lists what was skipped and why, and stats.truncated tells you whether a cap cut the result; ' +
         'skipped messages can still be read one at a time with get_email.',
       inputSchema: collectMailInput,
@@ -315,9 +369,11 @@ export function registerCollectMail(server: McpServer, deps: ServerDeps): void {
     (args, extra) =>
       withMailbox(deps, 'collect_mail', extra, async (provider) => {
         const { filters } = toSearchCall(args, limits.maxPageSize);
+        const bookmark = present(args.after_message_id);
         const result = await collectMail(provider, {
           filters,
           order: args.order ?? 'newest_first',
+          ...(bookmark !== undefined ? { afterMessageId: bookmark } : {}),
           includeThread: args.include_thread ?? false,
           attachments: args.attachments ?? 'text',
           limits: {
@@ -346,6 +402,7 @@ export function registerCollectMail(server: McpServer, deps: ServerDeps): void {
         ];
         if (result.skipped.length) parts.push(`${result.skipped.length} skipped (see skipped[])`);
         if (stats.truncated) parts.push('truncated by a cap');
+        if (result.next_after_message_id) parts.push('next batch after the last message_id');
         return toolResult(result, `${parts.join(', ')}. Query: ${result.query_used}`);
       }),
   );

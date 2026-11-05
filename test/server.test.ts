@@ -1218,6 +1218,7 @@ describe('collect_mail', () => {
       total_chars: 700,
       truncated: false,
     });
+    expect(body.next_after_message_id).toBeNull();
     // Default max_messages (50) asked of the provider; ids only, one page.
     expect(fake.listMessageIds).toHaveBeenCalledTimes(1);
     expect(fake.listMessageIds).toHaveBeenCalledWith({ subject: 'x' }, { page_size: 50 });
@@ -1282,6 +1283,132 @@ describe('collect_mail', () => {
     expect(fake.listMessageIds.mock.calls[1]?.[1]).toEqual({ page_size: 5, page_token: '10' });
     expect(body.documents.map((d) => d.reference.message_id)).toEqual(['m15', 'm14', 'm13']);
     expect(body.stats.truncated).toBe(true);
+  });
+
+  it('after_message_id chains oldest_first batches until next_after_message_id is null', async () => {
+    const fake = collectProvider(30, { pageSize: 10 });
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+    const batch = async (after?: string): Promise<CollectResult> =>
+      collectResult(
+        await client.callTool({
+          name: 'collect_mail',
+          arguments: {
+            subject: 'x',
+            max_messages: 10,
+            order: 'oldest_first',
+            ...(after ? { after_message_id: after } : {}),
+          },
+        }),
+      );
+    const ids = (r: CollectResult): string[] => r.documents.map((d) => d.reference.message_id);
+    const range = (from: number, to: number): string[] =>
+      Array.from({ length: from - to + 1 }, (_, i) => `m${from - i}`);
+
+    const first = await batch();
+    expect(ids(first)).toEqual(range(30, 21));
+    expect(first.next_after_message_id).toBe('m21');
+    expect(first.stats.truncated).toBe(true);
+
+    const second = await batch(first.next_after_message_id!);
+    expect(ids(second)).toEqual(range(20, 11));
+    expect(second.next_after_message_id).toBe('m11');
+
+    const third = await batch(second.next_after_message_id!);
+    expect(ids(third)).toEqual(range(10, 1).map((id) => id.replace(/^m(\d)$/, 'm0$1')));
+    expect(third.next_after_message_id).toBeNull();
+    expect(third.stats).toMatchObject({
+      messages_found: 30,
+      messages_returned: 10,
+      truncated: false,
+    });
+  });
+
+  it('after_message_id chains newest_first batches, walking only as far as needed', async () => {
+    const fake = collectProvider(25, { pageSize: 10 });
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+    const batch = async (after?: string): Promise<CollectResult> =>
+      collectResult(
+        await client.callTool({
+          name: 'collect_mail',
+          arguments: {
+            subject: 'x',
+            max_messages: 10,
+            ...(after ? { after_message_id: after } : {}),
+          },
+        }),
+      );
+    const ids = (r: CollectResult): string[] => r.documents.map((d) => d.reference.message_id);
+
+    const first = await batch();
+    expect(ids(first)).toEqual([
+      'm01',
+      'm02',
+      'm03',
+      'm04',
+      'm05',
+      'm06',
+      'm07',
+      'm08',
+      'm09',
+      'm10',
+    ]);
+    expect(first.next_after_message_id).toBe('m10');
+
+    fake.listMessageIds.mockClear();
+    const second = await batch('m10');
+    expect(ids(second)).toEqual([
+      'm11',
+      'm12',
+      'm13',
+      'm14',
+      'm15',
+      'm16',
+      'm17',
+      'm18',
+      'm19',
+      'm20',
+    ]);
+    expect(second.next_after_message_id).toBe('m20');
+    // Bookmark found in the first page, so the walk stopped after the second.
+    expect(fake.listMessageIds).toHaveBeenCalledTimes(2);
+
+    const third = await batch('m20');
+    expect(ids(third)).toEqual(['m21', 'm22', 'm23', 'm24', 'm25']);
+    expect(third.next_after_message_id).toBeNull();
+    expect(third.stats.truncated).toBe(false);
+  });
+
+  it('after_message_id counts messages cut by max_total_chars, so a batch never repeats', async () => {
+    const fake = collectProvider(6, { bodyChars: 100 });
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+
+    const body = collectResult(
+      await client.callTool({
+        name: 'collect_mail',
+        arguments: { subject: 'x', max_messages: 4, max_total_chars: 250, attachments: 'none' },
+      }),
+    );
+
+    expect(body.documents.map((d) => d.reference.message_id)).toEqual(['m01', 'm02']);
+    expect(body.skipped.map((s) => s.message_id)).toEqual(['m03', 'm04']);
+    expect(body.next_after_message_id).toBe('m04');
+  });
+
+  it('after_message_id that is not among the matches is NOT_FOUND', async () => {
+    const fake = collectProvider(5);
+    const client = await connect(fakeDeps({ createProvider: () => fake.provider }));
+
+    const result = await client.callTool({
+      name: 'collect_mail',
+      arguments: { subject: 'x', order: 'oldest_first', after_message_id: 'gone' },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(textOf(result, 0))).toMatchObject({
+      code: 'NOT_FOUND',
+      message: 'after_message_id gone is not among the matching messages.',
+    });
+    expect(fake.getMessage).not.toHaveBeenCalled();
   });
 
   it('lowers max_messages and max_total_chars to the server caps', async () => {

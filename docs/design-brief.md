@@ -172,13 +172,14 @@ Gmail attachment ids are not guaranteed stable across calls. If `attachment_id` 
 
 The one-call bundle. Same filter fields as `search_mail` plus:
 
-| Field             | Type                             | Notes                                                                                                                                                                    |
-| ----------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `max_messages`    | number                           | Default 50, hard max `MAX_COLLECT_MESSAGES` (default 200)                                                                                                                |
-| `include_thread`  | boolean                          | Default false                                                                                                                                                            |
-| `attachments`     | "text" \| "list" \| "none"       | Default "text"                                                                                                                                                           |
-| `max_total_chars` | number                           | Default 2_000_000. Stop adding documents when reached.                                                                                                                   |
-| `order`           | "newest_first" \| "oldest_first" | Default "newest_first". `oldest_first` walks the id list to the end (capped by `MAX_SEARCH_IDS`), reverses, takes `max_messages`. (changed 2026-10-29, see decisions.md) |
+| Field              | Type                             | Notes                                                                                                                                                                    |
+| ------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `max_messages`     | number                           | Default 50, hard max `MAX_COLLECT_MESSAGES` (default 200)                                                                                                                |
+| `include_thread`   | boolean                          | Default false                                                                                                                                                            |
+| `attachments`      | "text" \| "list" \| "none"       | Default "text"                                                                                                                                                           |
+| `max_total_chars`  | number                           | Default 2_000_000. Stop adding documents when reached.                                                                                                                   |
+| `order`            | "newest_first" \| "oldest_first" | Default "newest_first". `oldest_first` walks the id list to the end (capped by `MAX_SEARCH_IDS`), reverses, takes `max_messages`. (changed 2026-10-29, see decisions.md) |
+| `after_message_id` | string                           | Start the batch right after this message in `order`, same filters. Not among the matches: `NOT_FOUND`. (added 2026-11-05, see decisions.md)                              |
 
 Behaviour: list message ids, page until `max_messages` or end, fetch each message, convert, convert attachments, apply caps, return. Messages left out by `max_total_chars` appear in `skipped` with reason `MAX_TOTAL_CHARS` (changed 2026-10-29, see decisions.md).
 
@@ -189,9 +190,12 @@ Output:
   "query_used": "…",
   "documents": [ Document, … ],
   "skipped": [ { "message_id": "…", "filename": "big.zip", "reason": "ATTACHMENT_UNSUPPORTED" } ],
-  "stats": { "messages_found": 43, "messages_returned": 43, "attachments_returned": 47, "total_chars": 812_331, "truncated": false }
+  "stats": { "messages_found": 43, "messages_returned": 43, "attachments_returned": 47, "total_chars": 812_331, "truncated": false },
+  "next_after_message_id": null
 }
 ```
+
+`next_after_message_id` is the last message id of the batch (returned, failed, or cut by `max_total_chars`) when a following batch exists in `order`, else `null`. Passing it back as `after_message_id` with the same filters and order returns the next batch. (added 2026-11-05, see decisions.md)
 
 Fetch messages concurrently with a small limit (default 5) and a short pause on `429`. Retry `429` and `5xx` with backoff, max 3 tries.
 

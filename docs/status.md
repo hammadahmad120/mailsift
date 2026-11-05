@@ -19,7 +19,7 @@ The phase-by-phase task breakdown with a verify step per task is in [tasks.md](t
 
 ## Current state of the code
 
-Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two resource templates, three prompts, two transports, one provider. `npm run check` is green (344 tests, all offline).
+Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two resource templates, three prompts, two transports, one provider. `npm run check` is green (348 tests, all offline).
 
 **Config, errors, logging**
 
@@ -49,7 +49,7 @@ Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two r
 **Tools (`src/tools/`, one file each)**
 
 - `with-mailbox.ts`: `withMailboxOrThrow(deps, name, extra, fn)` is the core: credentials -> scope check -> provider -> `fn`, one log line per call (`tool`, `rpc_id`, `duration_ms`, `code` on failure; `request_id` comes from the HTTP layer's child logger), any throw rethrown as `McpError`. `withMailbox` wraps it for tools and turns the throw into a structured tool error. Resources call the core directly.
-- `get-mailbox-profile.ts`, `search-mail.ts`, `get-email.ts` (thread and attachment text options), `get-attachment-text.ts`, `get-attachment-file.ts` (original bytes as an embedded resource under `mail://attachment/{message_id}/{filename}`), `collect-mail.ts` (`collectMail` core: id walk with `order`, `pLimit` fetches, caps, `skipped`, `stats`).
+- `get-mailbox-profile.ts`, `search-mail.ts`, `get-email.ts` (thread and attachment text options), `get-attachment-text.ts`, `get-attachment-file.ts` (original bytes as an embedded resource under `mail://attachment/{message_id}/{filename}`), `collect-mail.ts` (`collectMail` core: id walk with `order` and the `after_message_id` bookmark, `pLimit` fetches, caps, `skipped`, `stats`, `next_after_message_id` for the following batch).
 - Helpers: `attachment-texts.ts`, `args.ts` (blank optional strings dropped), `result.ts` (`toolResult`, the two-block reply).
 - `src/util/concurrency.ts`: `pLimit`.
 
@@ -95,4 +95,4 @@ Phases 0 to 5 are complete; phase 6 in progress. Six tools, two resources, two r
 
 ## Next step
 
-Task 6.5 (npm publish setup) is deferred by the user on 2026-11-03 until an npm account exists; the README's `npx mailsift` lines assume it. Task 6.6 (release tag) depends on it. Open items on the MCP side are listed under Known issues.
+Task 6.7 (`collect_mail` batch bookmark `after_message_id` / `next_after_message_id`) is built and tested (2026-11-05), awaiting the manual check in Inspector before it is ticked. Task 6.5 (npm publish setup) is deferred by the user on 2026-11-03 until an npm account exists; the README's `npx mailsift` lines assume it. Task 6.6 (release tag) depends on it. Open items on the MCP side are listed under Known issues.

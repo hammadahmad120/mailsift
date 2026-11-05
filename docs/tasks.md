@@ -274,6 +274,12 @@ Goal: a complete MCP server and a repo someone else can use.
 - [ ] **6.6 Phase 6 docs sync and release**
   - Verify: status shows all six phases done. Tag `v0.1.0`.
 
+- [ ] **6.7 `collect_mail` batch bookmark: `after_message_id`** (added 2026-11-05; independent of 6.5 and 6.6, may be done first)
+  - Why: a caller working through a pile in batches ("the 20 oldest, then the next 20 after those") has no way to say where the last batch ended. `oldest_first` already walks and orders the whole id list, then drops everything past `max_messages`.
+  - Build: new optional input `after_message_id` (string). The batch starts right after that message in the chosen `order`, with the same filters. The id walk runs until the bookmark is found plus `max_messages` ids past it (`oldest_first` walks to the end as now), capped by `MAX_SEARCH_IDS`. Bookmark not in the walked list: structured `NOT_FOUND` with a hint to re-run without it. Reply gains `next_after_message_id: string | null`: the last id of the batch (returned, failed, or cut by `max_total_chars`; the brief already says those are read one by one with `get_email`), `null` when the walk reached the end. Pure change in `walkIds` plus one result field; no new provider method.
+  - Files: `src/tools/collect-mail.ts`, `test/server.test.ts`, `docs/design-brief.md` 8.4, `README.md`, `docs/decisions.md`.
+  - Verify: test with a fake provider of 30 messages, `oldest_first`, `max_messages: 10`: three calls chained by `next_after_message_id` return ids 1-10, 11-20, 21-30 and the third has `null`; the same for `newest_first`; an unknown bookmark is `NOT_FOUND`. Manual: in Inspector, collect 5 oldest on one subject, pass the bookmark, see the next 5.
+
 ---
 
 ## Phase 7 — Later, only when asked
